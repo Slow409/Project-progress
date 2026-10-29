@@ -10,7 +10,15 @@ function App() {
 
     if (saved) {
 
-      return JSON.parse(saved)
+      try {
+
+        return JSON.parse(saved)
+
+      } catch {
+
+        return []
+
+      }
 
     }
 
@@ -24,11 +32,41 @@ function App() {
 
         tasks: [
 
-          { id: 1, text: 'Projektplanung', done: true },
+          {
 
-          { id: 2, text: 'Material beschaffen', done: false },
+            id: 1,
 
-          { id: 3, text: 'Montage durchführen', done: false },
+            text: 'Projektplanung',
+
+            done: true,
+
+            dueDate: '',
+
+          },
+
+          {
+
+            id: 2,
+
+            text: 'Material beschaffen',
+
+            done: false,
+
+            dueDate: '',
+
+          },
+
+          {
+
+            id: 3,
+
+            text: 'Montage durchführen',
+
+            done: false,
+
+            dueDate: '',
+
+          },
 
         ],
 
@@ -47,6 +85,8 @@ function App() {
   const [newProjectName, setNewProjectName] = useState('')
 
   const [newTask, setNewTask] = useState('')
+
+  const [newDueDate, setNewDueDate] = useState('')
 
   useEffect(() => {
 
@@ -76,13 +116,7 @@ function App() {
 
     }
 
-    setProjects((currentProjects) => [
-
-      ...currentProjects,
-
-      newProject,
-
-    ])
+    setProjects((current) => [...current, newProject])
 
     setSelectedProjectId(newProject.id)
 
@@ -92,17 +126,17 @@ function App() {
 
   const deleteProject = (projectId) => {
 
-    const remainingProjects = projects.filter(
+    const remaining = projects.filter(
 
       (project) => project.id !== projectId
 
     )
 
-    setProjects(remainingProjects)
+    setProjects(remaining)
 
     if (selectedProjectId === projectId) {
 
-      setSelectedProjectId(remainingProjects[0]?.id ?? null)
+      setSelectedProjectId(remaining[0]?.id ?? null)
 
     }
 
@@ -114,9 +148,9 @@ function App() {
 
     if (!text || !selectedProject) return
 
-    setProjects((currentProjects) =>
+    setProjects((current) =>
 
-      currentProjects.map((project) =>
+      current.map((project) =>
 
         project.id === selectedProjectId
 
@@ -136,6 +170,8 @@ function App() {
 
                   done: false,
 
+                  dueDate: newDueDate,
+
                 },
 
               ],
@@ -150,13 +186,15 @@ function App() {
 
     setNewTask('')
 
+    setNewDueDate('')
+
   }
 
   const toggleTask = (taskId) => {
 
-    setProjects((currentProjects) =>
+    setProjects((current) =>
 
-      currentProjects.map((project) =>
+      current.map((project) =>
 
         project.id === selectedProjectId
 
@@ -186,9 +224,9 @@ function App() {
 
   const deleteTask = (taskId) => {
 
-    setProjects((currentProjects) =>
+    setProjects((current) =>
 
-      currentProjects.map((project) =>
+      current.map((project) =>
 
         project.id === selectedProjectId
 
@@ -207,6 +245,32 @@ function App() {
           : project
 
       )
+
+    )
+
+  }
+
+  const isOverdue = (task) => {
+
+    if (!task.dueDate || task.done) return false
+
+    const today = new Date()
+
+    today.setHours(0, 0, 0, 0)
+
+    const due = new Date(`${task.dueDate}T00:00:00`)
+
+    return due < today
+
+  }
+
+  const formatDate = (date) => {
+
+    if (!date) return 'Kein Termin'
+
+    return new Date(`${date}T00:00:00`).toLocaleDateString(
+
+      'de-DE'
 
     )
 
@@ -234,7 +298,7 @@ function App() {
 
         fontFamily: 'Arial, sans-serif',
 
-        maxWidth: '800px',
+        maxWidth: '850px',
 
         margin: '40px auto',
 
@@ -246,11 +310,23 @@ function App() {
 
       <h1>Project Progress</h1>
 
-      <p>Mehrere Projekte einfach erfassen und verfolgen.</p>
+      <p>Projekte, Fortschritt und Termine einfach verfolgen.</p>
 
       <h2>Neues Projekt</h2>
 
-      <div style={{ display: 'flex', gap: '10px' }}>
+      <div
+
+        style={{
+
+          display: 'flex',
+
+          gap: '10px',
+
+          marginBottom: '25px',
+
+        }}
+
+      >
 
         <input
 
@@ -284,19 +360,7 @@ function App() {
 
         />
 
-        <button
-
-          onClick={addProject}
-
-          style={{
-
-            padding: '12px 20px',
-
-            cursor: 'pointer',
-
-          }}
-
-        >
+        <button onClick={addProject}>
 
           Projekt hinzufügen
 
@@ -340,8 +404,6 @@ function App() {
 
               padding: '12px',
 
-              cursor: 'pointer',
-
               fontWeight:
 
                 project.id === selectedProjectId
@@ -358,19 +420,7 @@ function App() {
 
           </button>
 
-          <button
-
-            onClick={() => deleteProject(project.id)}
-
-            style={{
-
-              padding: '12px',
-
-              cursor: 'pointer',
-
-            }}
-
-          >
+          <button onClick={() => deleteProject(project.id)}>
 
             Löschen
 
@@ -430,7 +480,21 @@ function App() {
 
           <h2>Neuen Arbeitsschritt hinzufügen</h2>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div
+
+            style={{
+
+              display: 'grid',
+
+              gridTemplateColumns: '1fr auto auto',
+
+              gap: '10px',
+
+              marginBottom: '30px',
+
+            }}
+
+          >
 
             <input
 
@@ -444,17 +508,9 @@ function App() {
 
               }
 
-              onKeyDown={(event) => {
-
-                if (event.key === 'Enter') addTask()
-
-              }}
-
               placeholder="Arbeitsschritt eingeben"
 
               style={{
-
-                flex: 1,
 
                 padding: '12px',
 
@@ -464,19 +520,29 @@ function App() {
 
             />
 
-            <button
+            <input
 
-              onClick={addTask}
+              type="date"
+
+              value={newDueDate}
+
+              onChange={(event) =>
+
+                setNewDueDate(event.target.value)
+
+              }
 
               style={{
 
-                padding: '12px 20px',
+                padding: '12px',
 
-                cursor: 'pointer',
+                fontSize: '16px',
 
               }}
 
-            >
+            />
+
+            <button onClick={addTask}>
 
               Hinzufügen
 
@@ -492,85 +558,121 @@ function App() {
 
           )}
 
-          {selectedProject.tasks.map((task) => (
+          {selectedProject.tasks.map((task) => {
 
-            <div
+            const overdue = isOverdue(task)
 
-              key={task.id}
+            return (
 
-              style={{
+              <div
 
-                display: 'flex',
-
-                alignItems: 'center',
-
-                gap: '15px',
-
-                padding: '12px 0',
-
-                borderBottom: '1px solid #ddd',
-
-              }}
-
-            >
-
-              <input
-
-                type="checkbox"
-
-                checked={task.done}
-
-                onChange={() => toggleTask(task.id)}
-
-              />
-
-              <span
+                key={task.id}
 
                 style={{
 
-                  flex: 1,
+                  display: 'flex',
 
-                  textDecoration: task.done
+                  alignItems: 'center',
 
-                    ? 'line-through'
+                  gap: '15px',
 
-                    : 'none',
+                  padding: '14px',
+
+                  marginBottom: '10px',
+
+                  border: overdue
+
+                    ? '2px solid #dc2626'
+
+                    : '1px solid #ddd',
+
+                  borderRadius: '8px',
 
                 }}
 
               >
 
-                {task.text}
+                <input
 
-              </span>
+                  type="checkbox"
 
-              <button
+                  checked={task.done}
 
-                onClick={() => deleteTask(task.id)}
+                  onChange={() => toggleTask(task.id)}
 
-                style={{
+                />
 
-                  padding: '8px 14px',
+                <div style={{ flex: 1 }}>
 
-                  cursor: 'pointer',
+                  <div
 
-                }}
+                    style={{
 
-              >
+                      textDecoration: task.done
 
-                Löschen
+                        ? 'line-through'
 
-              </button>
+                        : 'none',
 
-            </div>
+                    }}
 
-          ))}
+                  >
 
-          <p style={{ fontWeight: 'bold' }}>
+                    {task.text}
 
-            {completedTasks} von {totalTasks} Arbeitsschritten
+                  </div>
 
-            abgeschlossen
+                  <small>
+
+                    Termin: {formatDate(task.dueDate)}
+
+                  </small>
+
+                  {overdue && (
+
+                    <div
+
+                      style={{
+
+                        color: '#dc2626',
+
+                        fontWeight: 'bold',
+
+                        marginTop: '4px',
+
+                      }}
+
+                    >
+
+                      Überfällig
+
+                    </div>
+
+                  )}
+
+                </div>
+
+                <button onClick={() => deleteTask(task.id)}>
+
+                  Löschen
+
+                </button>
+
+              </div>
+
+            )
+
+          })}
+
+          <p>
+
+            <strong>
+
+              {completedTasks} von {totalTasks} Arbeitsschritten
+
+              abgeschlossen
+
+            </strong>
 
           </p>
 
