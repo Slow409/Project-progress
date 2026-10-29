@@ -42,6 +42,8 @@ function App() {
 
             status: 'done',
 
+            priority: 'medium',
+
             dueDate: '',
 
           },
@@ -56,6 +58,8 @@ function App() {
 
             status: 'open',
 
+            priority: 'medium',
+
             dueDate: '',
 
           },
@@ -69,6 +73,8 @@ function App() {
             done: false,
 
             status: 'open',
+
+            priority: 'medium',
 
             dueDate: '',
 
@@ -93,6 +99,8 @@ function App() {
   const [newTask, setNewTask] = useState('')
 
   const [newDueDate, setNewDueDate] = useState('')
+
+  const [newPriority, setNewPriority] = useState('medium')
 
   useEffect(() => {
 
@@ -178,6 +186,8 @@ function App() {
 
                   status: 'open',
 
+                  priority: newPriority,
+
                   dueDate: newDueDate,
 
                 },
@@ -196,6 +206,8 @@ function App() {
 
     setNewDueDate('')
 
+    setNewPriority('medium')
+
   }
 
   const getTaskStatus = (task) => {
@@ -203,6 +215,12 @@ function App() {
     if (task.status) return task.status
 
     return task.done ? 'done' : 'open'
+
+  }
+
+  const getTaskPriority = (task) => {
+
+    return task.priority || 'medium'
 
   }
 
@@ -231,6 +249,38 @@ function App() {
                       done: newStatus === 'done',
 
                     }
+
+                  : task
+
+              ),
+
+            }
+
+          : project
+
+      )
+
+    )
+
+  }
+
+  const changeTaskPriority = (taskId, priority) => {
+
+    setProjects((current) =>
+
+      current.map((project) =>
+
+        project.id === selectedProjectId
+
+          ? {
+
+              ...project,
+
+              tasks: project.tasks.map((task) =>
+
+                task.id === taskId
+
+                  ? { ...task, priority }
 
                   : task
 
@@ -304,6 +354,16 @@ function App() {
 
   }
 
+  const priorityLabel = (priority) => {
+
+    if (priority === 'high') return 'Hoch'
+
+    if (priority === 'low') return 'Niedrig'
+
+    return 'Mittel'
+
+  }
+
   const completedTasks =
 
     selectedProject?.tasks.filter(
@@ -330,7 +390,7 @@ function App() {
 
         fontFamily: 'Arial, sans-serif',
 
-        maxWidth: '850px',
+        maxWidth: '900px',
 
         margin: '40px auto',
 
@@ -344,25 +404,15 @@ function App() {
 
       <p>
 
-        Projekte, Fortschritt, Status und Termine einfach verfolgen.
+        Projekte, Fortschritt, Status, Prioritäten und Termine
+
+        einfach verfolgen.
 
       </p>
 
       <h2>Neues Projekt</h2>
 
-      <div
-
-        style={{
-
-          display: 'flex',
-
-          gap: '10px',
-
-          marginBottom: '25px',
-
-        }}
-
-      >
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '25px' }}>
 
         <input
 
@@ -370,11 +420,7 @@ function App() {
 
           value={newProjectName}
 
-          onChange={(event) =>
-
-            setNewProjectName(event.target.value)
-
-          }
+          onChange={(event) => setNewProjectName(event.target.value)}
 
           onKeyDown={(event) => {
 
@@ -384,15 +430,7 @@ function App() {
 
           placeholder="Projektname eingeben"
 
-          style={{
-
-            flex: 1,
-
-            padding: '12px',
-
-            fontSize: '16px',
-
-          }}
+          style={{ flex: 1, padding: '12px', fontSize: '16px' }}
 
         />
 
@@ -522,7 +560,7 @@ function App() {
 
               display: 'grid',
 
-              gridTemplateColumns: '1fr auto auto',
+              gridTemplateColumns: '1fr auto auto auto',
 
               gap: '10px',
 
@@ -538,21 +576,11 @@ function App() {
 
               value={newTask}
 
-              onChange={(event) =>
-
-                setNewTask(event.target.value)
-
-              }
+              onChange={(event) => setNewTask(event.target.value)}
 
               placeholder="Arbeitsschritt eingeben"
 
-              style={{
-
-                padding: '12px',
-
-                fontSize: '16px',
-
-              }}
+              style={{ padding: '12px', fontSize: '16px' }}
 
             />
 
@@ -562,21 +590,33 @@ function App() {
 
               value={newDueDate}
 
+              onChange={(event) => setNewDueDate(event.target.value)}
+
+              style={{ padding: '12px', fontSize: '16px' }}
+
+            />
+
+            <select
+
+              value={newPriority}
+
               onChange={(event) =>
 
-                setNewDueDate(event.target.value)
+                setNewPriority(event.target.value)
 
               }
 
-              style={{
+              style={{ padding: '12px', fontSize: '16px' }}
 
-                padding: '12px',
+            >
 
-                fontSize: '16px',
+              <option value="low">Niedrig</option>
 
-              }}
+              <option value="medium">Mittel</option>
 
-            />
+              <option value="high">Hoch</option>
+
+            </select>
 
             <button onClick={addTask}>
 
@@ -597,6 +637,8 @@ function App() {
           {selectedProject.tasks.map((task) => {
 
             const status = getTaskStatus(task)
+
+            const priority = getTaskPriority(task)
 
             const overdue = isOverdue(task)
 
@@ -634,11 +676,13 @@ function App() {
 
                     gap: '12px',
 
+                    flexWrap: 'wrap',
+
                   }}
 
                 >
 
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: '1 1 250px' }}>
 
                     <div
 
@@ -668,6 +712,16 @@ function App() {
 
                     </small>
 
+                    <div>
+
+                      <small>
+
+                        Priorität: {priorityLabel(priority)}
+
+                      </small>
+
+                    </div>
+
                     {overdue && (
 
                       <div
@@ -694,6 +748,34 @@ function App() {
 
                   <select
 
+                    value={priority}
+
+                    onChange={(event) =>
+
+                      changeTaskPriority(
+
+                        task.id,
+
+                        event.target.value
+
+                      )
+
+                    }
+
+                    style={{ padding: '8px', fontSize: '15px' }}
+
+                  >
+
+                    <option value="low">Niedrig</option>
+
+                    <option value="medium">Mittel</option>
+
+                    <option value="high">Hoch</option>
+
+                  </select>
+
+                  <select
+
                     value={status}
 
                     onChange={(event) =>
@@ -708,33 +790,19 @@ function App() {
 
                     }
 
-                    style={{
-
-                      padding: '8px',
-
-                      fontSize: '15px',
-
-                    }}
+                    style={{ padding: '8px', fontSize: '15px' }}
 
                   >
 
                     <option value="open">Offen</option>
 
-                    <option value="progress">
-
-                      In Arbeit
-
-                    </option>
+                    <option value="progress">In Arbeit</option>
 
                     <option value="done">Erledigt</option>
 
                   </select>
 
-                  <button
-
-                    onClick={() => deleteTask(task.id)}
-
-                  >
+                  <button onClick={() => deleteTask(task.id)}>
 
                     Löschen
 
