@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react'
 
 import './App.css'
@@ -31,57 +30,13 @@ function App() {
 
         name: 'Mein erstes Projekt',
 
-        tasks: [
+        startDate: '',
 
-          {
+        endDate: '',
 
-            id: 1,
+        status: 'planned',
 
-            text: 'Projektplanung',
-
-            done: true,
-
-            status: 'done',
-
-            priority: 'medium',
-
-            dueDate: '',
-
-          },
-
-          {
-
-            id: 2,
-
-            text: 'Material beschaffen',
-
-            done: false,
-
-            status: 'open',
-
-            priority: 'medium',
-
-            dueDate: '',
-
-          },
-
-          {
-
-            id: 3,
-
-            text: 'Montage durchführen',
-
-            done: false,
-
-            status: 'open',
-
-            priority: 'medium',
-
-            dueDate: '',
-
-          },
-
-        ],
+        tasks: [],
 
       },
 
@@ -123,17 +78,47 @@ function App() {
 
   )
 
-  const getTaskStatus = (task) => {
+  const getTaskStatus = (task) =>
 
-    if (task.status) return task.status
+    task.status || (task.done ? 'done' : 'open')
 
-    return task.done ? 'done' : 'open'
+  const getTaskPriority = (task) =>
+
+    task.priority || 'medium'
+
+  const getProjectStatus = (project) =>
+
+    project.status || 'planned'
+
+  const formatDate = (date) => {
+
+    if (!date) return 'Nicht festgelegt'
+
+    return new Date(`${date}T00:00:00`).toLocaleDateString(
+
+      'de-DE'
+
+    )
 
   }
 
-  const getTaskPriority = (task) => {
+  const priorityLabel = (priority) => {
 
-    return task.priority || 'medium'
+    if (priority === 'high') return 'Hoch'
+
+    if (priority === 'low') return 'Niedrig'
+
+    return 'Mittel'
+
+  }
+
+  const projectStatusLabel = (status) => {
+
+    if (status === 'progress') return 'In Arbeit'
+
+    if (status === 'done') return 'Abgeschlossen'
+
+    return 'Geplant'
 
   }
 
@@ -167,6 +152,12 @@ function App() {
 
       name,
 
+      startDate: '',
+
+      endDate: '',
+
+      status: 'planned',
+
       tasks: [],
 
     }
@@ -194,6 +185,24 @@ function App() {
       setSelectedProjectId(remaining[0]?.id ?? null)
 
     }
+
+  }
+
+  const updateProjectField = (field, value) => {
+
+    setProjects((current) =>
+
+      current.map((project) =>
+
+        project.id === selectedProjectId
+
+          ? { ...project, [field]: value }
+
+          : project
+
+      )
+
+    )
 
   }
 
@@ -423,28 +432,6 @@ function App() {
 
   }
 
-  const formatDate = (date) => {
-
-    if (!date) return 'Kein Termin'
-
-    return new Date(`${date}T00:00:00`).toLocaleDateString(
-
-      'de-DE'
-
-    )
-
-  }
-
-  const priorityLabel = (priority) => {
-
-    if (priority === 'high') return 'Hoch'
-
-    if (priority === 'low') return 'Niedrig'
-
-    return 'Mittel'
-
-  }
-
   const totalTasks = selectedProject?.tasks.length ?? 0
 
   const completedTasks =
@@ -473,9 +460,7 @@ function App() {
 
   const overdueTasks =
 
-    selectedProject?.tasks.filter((task) => isOverdue(task))
-
-      .length ?? 0
+    selectedProject?.tasks.filter(isOverdue).length ?? 0
 
   const progress =
 
@@ -529,19 +514,7 @@ function App() {
 
       <h2>Neues Projekt</h2>
 
-      <div
-
-        style={{
-
-          display: 'flex',
-
-          gap: '10px',
-
-          marginBottom: '25px',
-
-        }}
-
-      >
+      <div style={{ display: 'flex', gap: '10px' }}>
 
         <input
 
@@ -584,12 +557,6 @@ function App() {
       </div>
 
       <h2>Meine Projekte</h2>
-
-      {projects.length === 0 && (
-
-        <p>Noch kein Projekt vorhanden.</p>
-
-      )}
 
       {projects.map((project) => (
 
@@ -653,6 +620,176 @@ function App() {
 
           <h2>{selectedProject.name}</h2>
 
+          <h3>Projektdaten</h3>
+
+          <div
+
+            style={{
+
+              display: 'grid',
+
+              gridTemplateColumns:
+
+                'repeat(auto-fit, minmax(180px, 1fr))',
+
+              gap: '12px',
+
+              marginBottom: '30px',
+
+            }}
+
+          >
+
+            <div>
+
+              <strong>Startdatum</strong>
+
+              <input
+
+                type="date"
+
+                value={selectedProject.startDate || ''}
+
+                onChange={(event) =>
+
+                  updateProjectField(
+
+                    'startDate',
+
+                    event.target.value
+
+                  )
+
+                }
+
+                style={{
+
+                  display: 'block',
+
+                  width: '100%',
+
+                  padding: '10px',
+
+                  marginTop: '6px',
+
+                  boxSizing: 'border-box',
+
+                }}
+
+              />
+
+            </div>
+
+            <div>
+
+              <strong>Enddatum</strong>
+
+              <input
+
+                type="date"
+
+                value={selectedProject.endDate || ''}
+
+                onChange={(event) =>
+
+                  updateProjectField(
+
+                    'endDate',
+
+                    event.target.value
+
+                  )
+
+                }
+
+                style={{
+
+                  display: 'block',
+
+                  width: '100%',
+
+                  padding: '10px',
+
+                  marginTop: '6px',
+
+                  boxSizing: 'border-box',
+
+                }}
+
+              />
+
+            </div>
+
+            <div>
+
+              <strong>Projektstatus</strong>
+
+              <select
+
+                value={getProjectStatus(selectedProject)}
+
+                onChange={(event) =>
+
+                  updateProjectField(
+
+                    'status',
+
+                    event.target.value
+
+                  )
+
+                }
+
+                style={{
+
+                  display: 'block',
+
+                  width: '100%',
+
+                  padding: '10px',
+
+                  marginTop: '6px',
+
+                  boxSizing: 'border-box',
+
+                }}
+
+              >
+
+                <option value="planned">Geplant</option>
+
+                <option value="progress">In Arbeit</option>
+
+                <option value="done">Abgeschlossen</option>
+
+              </select>
+
+            </div>
+
+          </div>
+
+          <p>
+
+            <strong>Status:</strong>{' '}
+
+            {projectStatusLabel(
+
+              getProjectStatus(selectedProject)
+
+            )}
+
+            {' · '}
+
+            <strong>Zeitraum:</strong>{' '}
+
+            {formatDate(selectedProject.startDate)}
+
+            {' – '}
+
+            {formatDate(selectedProject.endDate)}
+
+          </p>
+
           <h3>Dashboard</h3>
 
           <div
@@ -675,11 +812,11 @@ function App() {
 
             <div style={dashboardCard}>
 
-              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+              <strong style={{ fontSize: '30px' }}>
 
                 {totalTasks}
 
-              </div>
+              </strong>
 
               <div>Gesamt</div>
 
@@ -687,11 +824,11 @@ function App() {
 
             <div style={dashboardCard}>
 
-              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+              <strong style={{ fontSize: '30px' }}>
 
                 {openTasks}
 
-              </div>
+              </strong>
 
               <div>Offen</div>
 
@@ -699,11 +836,11 @@ function App() {
 
             <div style={dashboardCard}>
 
-              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+              <strong style={{ fontSize: '30px' }}>
 
                 {progressTasks}
 
-              </div>
+              </strong>
 
               <div>In Arbeit</div>
 
@@ -711,11 +848,11 @@ function App() {
 
             <div style={dashboardCard}>
 
-              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+              <strong style={{ fontSize: '30px' }}>
 
                 {overdueTasks}
 
-              </div>
+              </strong>
 
               <div>Überfällig</div>
 
@@ -755,8 +892,6 @@ function App() {
 
                 background: '#22c55e',
 
-                transition: 'width 0.3s',
-
               }}
 
             />
@@ -795,13 +930,7 @@ function App() {
 
               placeholder="Arbeitsschritt eingeben"
 
-              style={{
-
-                padding: '12px',
-
-                fontSize: '16px',
-
-              }}
+              style={{ padding: '12px' }}
 
             />
 
@@ -817,13 +946,7 @@ function App() {
 
               }
 
-              style={{
-
-                padding: '12px',
-
-                fontSize: '16px',
-
-              }}
+              style={{ padding: '12px' }}
 
             />
 
@@ -837,13 +960,7 @@ function App() {
 
               }
 
-              style={{
-
-                padding: '12px',
-
-                fontSize: '16px',
-
-              }}
+              style={{ padding: '12px' }}
 
             >
 
@@ -864,12 +981,6 @@ function App() {
           </div>
 
           <h2>Arbeitsschritte</h2>
-
-          {selectedProject.tasks.length === 0 && (
-
-            <p>Noch keine Arbeitsschritte vorhanden.</p>
-
-          )}
 
           {selectedProject.tasks.map((task) => {
 
@@ -911,23 +1022,17 @@ function App() {
 
                     style={{
 
-                      display: 'grid',
-
-                      gridTemplateColumns:
-
-                        '1fr auto auto auto auto',
+                      display: 'flex',
 
                       gap: '10px',
 
-                      alignItems: 'center',
+                      flexWrap: 'wrap',
 
                     }}
 
                   >
 
                     <input
-
-                      type="text"
 
                       value={editText}
 
@@ -936,8 +1041,6 @@ function App() {
                         setEditText(event.target.value)
 
                       }
-
-                      style={{ padding: '8px' }}
 
                     />
 
@@ -953,8 +1056,6 @@ function App() {
 
                       }
 
-                      style={{ padding: '8px' }}
-
                     />
 
                     <select
@@ -966,8 +1067,6 @@ function App() {
                         setEditPriority(event.target.value)
 
                       }
-
-                      style={{ padding: '8px' }}
 
                     >
 
@@ -1017,33 +1116,17 @@ function App() {
 
                     <div style={{ flex: '1 1 250px' }}>
 
-                      <div
+                      <strong>{task.text}</strong>
 
-                        style={{
+                      <div>
 
-                          fontWeight: 'bold',
+                        <small>
 
-                          textDecoration:
+                          Termin: {formatDate(task.dueDate)}
 
-                            status === 'done'
-
-                              ? 'line-through'
-
-                              : 'none',
-
-                        }}
-
-                      >
-
-                        {task.text}
+                        </small>
 
                       </div>
-
-                      <small>
-
-                        Termin: {formatDate(task.dueDate)}
-
-                      </small>
 
                       <div>
 
@@ -1057,23 +1140,11 @@ function App() {
 
                       {overdue && (
 
-                        <div
-
-                          style={{
-
-                            color: '#dc2626',
-
-                            fontWeight: 'bold',
-
-                            marginTop: '4px',
-
-                          }}
-
-                        >
+                        <strong style={{ color: '#dc2626' }}>
 
                           Überfällig
 
-                        </div>
+                        </strong>
 
                       )}
 
@@ -1094,14 +1165,6 @@ function App() {
                         )
 
                       }
-
-                      style={{
-
-                        padding: '8px',
-
-                        fontSize: '15px',
-
-                      }}
 
                     >
 
@@ -1129,23 +1192,11 @@ function App() {
 
                       }
 
-                      style={{
-
-                        padding: '8px',
-
-                        fontSize: '15px',
-
-                      }}
-
                     >
 
                       <option value="open">Offen</option>
 
-                      <option value="progress">
-
-                        In Arbeit
-
-                      </option>
+                      <option value="progress">In Arbeit</option>
 
                       <option value="done">Erledigt</option>
 
