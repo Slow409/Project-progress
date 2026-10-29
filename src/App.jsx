@@ -114,6 +114,38 @@ function App() {
 
   )
 
+  const getTaskStatus = (task) => {
+
+    if (task.status) return task.status
+
+    return task.done ? 'done' : 'open'
+
+  }
+
+  const getTaskPriority = (task) => {
+
+    return task.priority || 'medium'
+
+  }
+
+  const isOverdue = (task) => {
+
+    if (!task.dueDate || getTaskStatus(task) === 'done') {
+
+      return false
+
+    }
+
+    const today = new Date()
+
+    today.setHours(0, 0, 0, 0)
+
+    const due = new Date(`${task.dueDate}T00:00:00`)
+
+    return due < today
+
+  }
+
   const addProject = () => {
 
     const name = newProjectName.trim()
@@ -207,20 +239,6 @@ function App() {
     setNewDueDate('')
 
     setNewPriority('medium')
-
-  }
-
-  const getTaskStatus = (task) => {
-
-    if (task.status) return task.status
-
-    return task.done ? 'done' : 'open'
-
-  }
-
-  const getTaskPriority = (task) => {
-
-    return task.priority || 'medium'
 
   }
 
@@ -324,24 +342,6 @@ function App() {
 
   }
 
-  const isOverdue = (task) => {
-
-    if (!task.dueDate || getTaskStatus(task) === 'done') {
-
-      return false
-
-    }
-
-    const today = new Date()
-
-    today.setHours(0, 0, 0, 0)
-
-    const due = new Date(`${task.dueDate}T00:00:00`)
-
-    return due < today
-
-  }
-
   const formatDate = (date) => {
 
     if (!date) return 'Kein Termin'
@@ -364,6 +364,8 @@ function App() {
 
   }
 
+  const totalTasks = selectedProject?.tasks.length ?? 0
+
   const completedTasks =
 
     selectedProject?.tasks.filter(
@@ -372,7 +374,27 @@ function App() {
 
     ).length ?? 0
 
-  const totalTasks = selectedProject?.tasks.length ?? 0
+  const openTasks =
+
+    selectedProject?.tasks.filter(
+
+      (task) => getTaskStatus(task) === 'open'
+
+    ).length ?? 0
+
+  const progressTasks =
+
+    selectedProject?.tasks.filter(
+
+      (task) => getTaskStatus(task) === 'progress'
+
+    ).length ?? 0
+
+  const overdueTasks =
+
+    selectedProject?.tasks.filter((task) => isOverdue(task))
+
+      .length ?? 0
 
   const progress =
 
@@ -382,6 +404,20 @@ function App() {
 
       : Math.round((completedTasks / totalTasks) * 100)
 
+  const dashboardCard = {
+
+    padding: '18px',
+
+    border: '1px solid #ddd',
+
+    borderRadius: '10px',
+
+    textAlign: 'center',
+
+    background: '#fff',
+
+  }
+
   return (
 
     <main
@@ -390,7 +426,7 @@ function App() {
 
         fontFamily: 'Arial, sans-serif',
 
-        maxWidth: '900px',
+        maxWidth: '950px',
 
         margin: '40px auto',
 
@@ -412,7 +448,19 @@ function App() {
 
       <h2>Neues Projekt</h2>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '25px' }}>
+      <div
+
+        style={{
+
+          display: 'flex',
+
+          gap: '10px',
+
+          marginBottom: '25px',
+
+        }}
+
+      >
 
         <input
 
@@ -420,7 +468,11 @@ function App() {
 
           value={newProjectName}
 
-          onChange={(event) => setNewProjectName(event.target.value)}
+          onChange={(event) =>
+
+            setNewProjectName(event.target.value)
+
+          }
 
           onKeyDown={(event) => {
 
@@ -430,7 +482,15 @@ function App() {
 
           placeholder="Projektname eingeben"
 
-          style={{ flex: 1, padding: '12px', fontSize: '16px' }}
+          style={{
+
+            flex: 1,
+
+            padding: '12px',
+
+            fontSize: '16px',
+
+          }}
 
         />
 
@@ -512,6 +572,76 @@ function App() {
 
           <h2>{selectedProject.name}</h2>
 
+          <h3>Dashboard</h3>
+
+          <div
+
+            style={{
+
+              display: 'grid',
+
+              gridTemplateColumns:
+
+                'repeat(auto-fit, minmax(140px, 1fr))',
+
+              gap: '12px',
+
+              marginBottom: '25px',
+
+            }}
+
+          >
+
+            <div style={dashboardCard}>
+
+              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+
+                {totalTasks}
+
+              </div>
+
+              <div>Gesamt</div>
+
+            </div>
+
+            <div style={dashboardCard}>
+
+              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+
+                {openTasks}
+
+              </div>
+
+              <div>Offen</div>
+
+            </div>
+
+            <div style={dashboardCard}>
+
+              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+
+                {progressTasks}
+
+              </div>
+
+              <div>In Arbeit</div>
+
+            </div>
+
+            <div style={dashboardCard}>
+
+              <div style={{ fontSize: '30px', fontWeight: 'bold' }}>
+
+                {overdueTasks}
+
+              </div>
+
+              <div>Überfällig</div>
+
+            </div>
+
+          </div>
+
           <h3>Gesamtfortschritt: {progress} %</h3>
 
           <div
@@ -576,11 +706,21 @@ function App() {
 
               value={newTask}
 
-              onChange={(event) => setNewTask(event.target.value)}
+              onChange={(event) =>
+
+                setNewTask(event.target.value)
+
+              }
 
               placeholder="Arbeitsschritt eingeben"
 
-              style={{ padding: '12px', fontSize: '16px' }}
+              style={{
+
+                padding: '12px',
+
+                fontSize: '16px',
+
+              }}
 
             />
 
@@ -590,9 +730,19 @@ function App() {
 
               value={newDueDate}
 
-              onChange={(event) => setNewDueDate(event.target.value)}
+              onChange={(event) =>
 
-              style={{ padding: '12px', fontSize: '16px' }}
+                setNewDueDate(event.target.value)
+
+              }
+
+              style={{
+
+                padding: '12px',
+
+                fontSize: '16px',
+
+              }}
 
             />
 
@@ -606,7 +756,13 @@ function App() {
 
               }
 
-              style={{ padding: '12px', fontSize: '16px' }}
+              style={{
+
+                padding: '12px',
+
+                fontSize: '16px',
+
+              }}
 
             >
 
@@ -762,7 +918,13 @@ function App() {
 
                     }
 
-                    style={{ padding: '8px', fontSize: '15px' }}
+                    style={{
+
+                      padding: '8px',
+
+                      fontSize: '15px',
+
+                    }}
 
                   >
 
@@ -790,19 +952,33 @@ function App() {
 
                     }
 
-                    style={{ padding: '8px', fontSize: '15px' }}
+                    style={{
+
+                      padding: '8px',
+
+                      fontSize: '15px',
+
+                    }}
 
                   >
 
                     <option value="open">Offen</option>
 
-                    <option value="progress">In Arbeit</option>
+                    <option value="progress">
+
+                      In Arbeit
+
+                    </option>
 
                     <option value="done">Erledigt</option>
 
                   </select>
 
-                  <button onClick={() => deleteTask(task.id)}>
+                  <button
+
+                    onClick={() => deleteTask(task.id)}
+
+                  >
 
                     Löschen
 
