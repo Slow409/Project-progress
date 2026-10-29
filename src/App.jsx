@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react'
 
 import './App.css'
@@ -101,6 +102,14 @@ function App() {
   const [newDueDate, setNewDueDate] = useState('')
 
   const [newPriority, setNewPriority] = useState('medium')
+
+  const [editingTaskId, setEditingTaskId] = useState(null)
+
+  const [editText, setEditText] = useState('')
+
+  const [editDueDate, setEditDueDate] = useState('')
+
+  const [editPriority, setEditPriority] = useState('medium')
 
   useEffect(() => {
 
@@ -311,6 +320,78 @@ function App() {
       )
 
     )
+
+  }
+
+  const startEditingTask = (task) => {
+
+    setEditingTaskId(task.id)
+
+    setEditText(task.text)
+
+    setEditDueDate(task.dueDate || '')
+
+    setEditPriority(getTaskPriority(task))
+
+  }
+
+  const cancelEditingTask = () => {
+
+    setEditingTaskId(null)
+
+    setEditText('')
+
+    setEditDueDate('')
+
+    setEditPriority('medium')
+
+  }
+
+  const saveEditedTask = (taskId) => {
+
+    const text = editText.trim()
+
+    if (!text) return
+
+    setProjects((current) =>
+
+      current.map((project) =>
+
+        project.id === selectedProjectId
+
+          ? {
+
+              ...project,
+
+              tasks: project.tasks.map((task) =>
+
+                task.id === taskId
+
+                  ? {
+
+                      ...task,
+
+                      text,
+
+                      dueDate: editDueDate,
+
+                      priority: editPriority,
+
+                    }
+
+                  : task
+
+              ),
+
+            }
+
+          : project
+
+      )
+
+    )
+
+    cancelEditingTask()
 
   }
 
@@ -798,6 +879,8 @@ function App() {
 
             const overdue = isOverdue(task)
 
+            const editing = editingTaskId === task.id
+
             return (
 
               <div
@@ -822,169 +905,275 @@ function App() {
 
               >
 
-                <div
+                {editing ? (
 
-                  style={{
+                  <div
 
-                    display: 'flex',
+                    style={{
 
-                    alignItems: 'center',
+                      display: 'grid',
 
-                    gap: '12px',
+                      gridTemplateColumns:
 
-                    flexWrap: 'wrap',
+                        '1fr auto auto auto auto',
 
-                  }}
+                      gap: '10px',
 
-                >
+                      alignItems: 'center',
 
-                  <div style={{ flex: '1 1 250px' }}>
+                    }}
 
-                    <div
+                  >
 
-                      style={{
+                    <input
 
-                        fontWeight: 'bold',
+                      type="text"
 
-                        textDecoration:
+                      value={editText}
 
-                          status === 'done'
+                      onChange={(event) =>
 
-                            ? 'line-through'
+                        setEditText(event.target.value)
 
-                            : 'none',
+                      }
 
-                      }}
+                      style={{ padding: '8px' }}
+
+                    />
+
+                    <input
+
+                      type="date"
+
+                      value={editDueDate}
+
+                      onChange={(event) =>
+
+                        setEditDueDate(event.target.value)
+
+                      }
+
+                      style={{ padding: '8px' }}
+
+                    />
+
+                    <select
+
+                      value={editPriority}
+
+                      onChange={(event) =>
+
+                        setEditPriority(event.target.value)
+
+                      }
+
+                      style={{ padding: '8px' }}
 
                     >
 
-                      {task.text}
+                      <option value="low">Niedrig</option>
 
-                    </div>
+                      <option value="medium">Mittel</option>
 
-                    <small>
+                      <option value="high">Hoch</option>
 
-                      Termin: {formatDate(task.dueDate)}
+                    </select>
 
-                    </small>
+                    <button
 
-                    <div>
+                      onClick={() => saveEditedTask(task.id)}
 
-                      <small>
+                    >
 
-                        Priorität: {priorityLabel(priority)}
+                      Speichern
 
-                      </small>
+                    </button>
 
-                    </div>
+                    <button onClick={cancelEditingTask}>
 
-                    {overdue && (
+                      Abbrechen
+
+                    </button>
+
+                  </div>
+
+                ) : (
+
+                  <div
+
+                    style={{
+
+                      display: 'flex',
+
+                      alignItems: 'center',
+
+                      gap: '12px',
+
+                      flexWrap: 'wrap',
+
+                    }}
+
+                  >
+
+                    <div style={{ flex: '1 1 250px' }}>
 
                       <div
 
                         style={{
 
-                          color: '#dc2626',
-
                           fontWeight: 'bold',
 
-                          marginTop: '4px',
+                          textDecoration:
+
+                            status === 'done'
+
+                              ? 'line-through'
+
+                              : 'none',
 
                         }}
 
                       >
 
-                        Überfällig
+                        {task.text}
 
                       </div>
 
-                    )}
+                      <small>
+
+                        Termin: {formatDate(task.dueDate)}
+
+                      </small>
+
+                      <div>
+
+                        <small>
+
+                          Priorität: {priorityLabel(priority)}
+
+                        </small>
+
+                      </div>
+
+                      {overdue && (
+
+                        <div
+
+                          style={{
+
+                            color: '#dc2626',
+
+                            fontWeight: 'bold',
+
+                            marginTop: '4px',
+
+                          }}
+
+                        >
+
+                          Überfällig
+
+                        </div>
+
+                      )}
+
+                    </div>
+
+                    <select
+
+                      value={priority}
+
+                      onChange={(event) =>
+
+                        changeTaskPriority(
+
+                          task.id,
+
+                          event.target.value
+
+                        )
+
+                      }
+
+                      style={{
+
+                        padding: '8px',
+
+                        fontSize: '15px',
+
+                      }}
+
+                    >
+
+                      <option value="low">Niedrig</option>
+
+                      <option value="medium">Mittel</option>
+
+                      <option value="high">Hoch</option>
+
+                    </select>
+
+                    <select
+
+                      value={status}
+
+                      onChange={(event) =>
+
+                        changeTaskStatus(
+
+                          task.id,
+
+                          event.target.value
+
+                        )
+
+                      }
+
+                      style={{
+
+                        padding: '8px',
+
+                        fontSize: '15px',
+
+                      }}
+
+                    >
+
+                      <option value="open">Offen</option>
+
+                      <option value="progress">
+
+                        In Arbeit
+
+                      </option>
+
+                      <option value="done">Erledigt</option>
+
+                    </select>
+
+                    <button
+
+                      onClick={() => startEditingTask(task)}
+
+                    >
+
+                      Bearbeiten
+
+                    </button>
+
+                    <button
+
+                      onClick={() => deleteTask(task.id)}
+
+                    >
+
+                      Löschen
+
+                    </button>
 
                   </div>
 
-                  <select
-
-                    value={priority}
-
-                    onChange={(event) =>
-
-                      changeTaskPriority(
-
-                        task.id,
-
-                        event.target.value
-
-                      )
-
-                    }
-
-                    style={{
-
-                      padding: '8px',
-
-                      fontSize: '15px',
-
-                    }}
-
-                  >
-
-                    <option value="low">Niedrig</option>
-
-                    <option value="medium">Mittel</option>
-
-                    <option value="high">Hoch</option>
-
-                  </select>
-
-                  <select
-
-                    value={status}
-
-                    onChange={(event) =>
-
-                      changeTaskStatus(
-
-                        task.id,
-
-                        event.target.value
-
-                      )
-
-                    }
-
-                    style={{
-
-                      padding: '8px',
-
-                      fontSize: '15px',
-
-                    }}
-
-                  >
-
-                    <option value="open">Offen</option>
-
-                    <option value="progress">
-
-                      In Arbeit
-
-                    </option>
-
-                    <option value="done">Erledigt</option>
-
-                  </select>
-
-                  <button
-
-                    onClick={() => deleteTask(task.id)}
-
-                  >
-
-                    Löschen
-
-                  </button>
-
-                </div>
+                )}
 
               </div>
 
