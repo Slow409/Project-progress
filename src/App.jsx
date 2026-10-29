@@ -40,6 +40,8 @@ function App() {
 
             done: true,
 
+            status: 'done',
+
             dueDate: '',
 
           },
@@ -52,6 +54,8 @@ function App() {
 
             done: false,
 
+            status: 'open',
+
             dueDate: '',
 
           },
@@ -63,6 +67,8 @@ function App() {
             text: 'Montage durchführen',
 
             done: false,
+
+            status: 'open',
 
             dueDate: '',
 
@@ -170,6 +176,8 @@ function App() {
 
                   done: false,
 
+                  status: 'open',
+
                   dueDate: newDueDate,
 
                 },
@@ -190,7 +198,15 @@ function App() {
 
   }
 
-  const toggleTask = (taskId) => {
+  const getTaskStatus = (task) => {
+
+    if (task.status) return task.status
+
+    return task.done ? 'done' : 'open'
+
+  }
+
+  const changeTaskStatus = (taskId, newStatus) => {
 
     setProjects((current) =>
 
@@ -206,7 +222,15 @@ function App() {
 
                 task.id === taskId
 
-                  ? { ...task, done: !task.done }
+                  ? {
+
+                      ...task,
+
+                      status: newStatus,
+
+                      done: newStatus === 'done',
+
+                    }
 
                   : task
 
@@ -252,7 +276,11 @@ function App() {
 
   const isOverdue = (task) => {
 
-    if (!task.dueDate || task.done) return false
+    if (!task.dueDate || getTaskStatus(task) === 'done') {
+
+      return false
+
+    }
 
     const today = new Date()
 
@@ -278,7 +306,11 @@ function App() {
 
   const completedTasks =
 
-    selectedProject?.tasks.filter((task) => task.done).length ?? 0
+    selectedProject?.tasks.filter(
+
+      (task) => getTaskStatus(task) === 'done'
+
+    ).length ?? 0
 
   const totalTasks = selectedProject?.tasks.length ?? 0
 
@@ -310,7 +342,11 @@ function App() {
 
       <h1>Project Progress</h1>
 
-      <p>Projekte, Fortschritt und Termine einfach verfolgen.</p>
+      <p>
+
+        Projekte, Fortschritt, Status und Termine einfach verfolgen.
+
+      </p>
 
       <h2>Neues Projekt</h2>
 
@@ -560,6 +596,8 @@ function App() {
 
           {selectedProject.tasks.map((task) => {
 
+            const status = getTaskStatus(task)
+
             const overdue = isOverdue(task)
 
             return (
@@ -569,12 +607,6 @@ function App() {
                 key={task.id}
 
                 style={{
-
-                  display: 'flex',
-
-                  alignItems: 'center',
-
-                  gap: '15px',
 
                   padding: '14px',
 
@@ -592,71 +624,123 @@ function App() {
 
               >
 
-                <input
+                <div
 
-                  type="checkbox"
+                  style={{
 
-                  checked={task.done}
+                    display: 'flex',
 
-                  onChange={() => toggleTask(task.id)}
+                    alignItems: 'center',
 
-                />
+                    gap: '12px',
 
-                <div style={{ flex: 1 }}>
+                  }}
 
-                  <div
+                >
 
-                    style={{
-
-                      textDecoration: task.done
-
-                        ? 'line-through'
-
-                        : 'none',
-
-                    }}
-
-                  >
-
-                    {task.text}
-
-                  </div>
-
-                  <small>
-
-                    Termin: {formatDate(task.dueDate)}
-
-                  </small>
-
-                  {overdue && (
+                  <div style={{ flex: 1 }}>
 
                     <div
 
                       style={{
 
-                        color: '#dc2626',
-
                         fontWeight: 'bold',
 
-                        marginTop: '4px',
+                        textDecoration:
+
+                          status === 'done'
+
+                            ? 'line-through'
+
+                            : 'none',
 
                       }}
 
                     >
 
-                      Überfällig
+                      {task.text}
 
                     </div>
 
-                  )}
+                    <small>
+
+                      Termin: {formatDate(task.dueDate)}
+
+                    </small>
+
+                    {overdue && (
+
+                      <div
+
+                        style={{
+
+                          color: '#dc2626',
+
+                          fontWeight: 'bold',
+
+                          marginTop: '4px',
+
+                        }}
+
+                      >
+
+                        Überfällig
+
+                      </div>
+
+                    )}
+
+                  </div>
+
+                  <select
+
+                    value={status}
+
+                    onChange={(event) =>
+
+                      changeTaskStatus(
+
+                        task.id,
+
+                        event.target.value
+
+                      )
+
+                    }
+
+                    style={{
+
+                      padding: '8px',
+
+                      fontSize: '15px',
+
+                    }}
+
+                  >
+
+                    <option value="open">Offen</option>
+
+                    <option value="progress">
+
+                      In Arbeit
+
+                    </option>
+
+                    <option value="done">Erledigt</option>
+
+                  </select>
+
+                  <button
+
+                    onClick={() => deleteTask(task.id)}
+
+                  >
+
+                    Löschen
+
+                  </button>
 
                 </div>
-
-                <button onClick={() => deleteTask(task.id)}>
-
-                  Löschen
-
-                </button>
 
               </div>
 
