@@ -1,46 +1,182 @@
 import { useEffect, useState } from 'react'
 
-const startTasks = [
-
-  { id: 1, name: 'Projektplanung', done: true },
-
-  { id: 2, name: 'Material beschaffen', done: false },
-
-  { id: 3, name: 'Montage durchführen', done: false },
-
-]
+import './App.css'
 
 function App() {
 
-  const [tasks, setTasks] = useState(() => {
+  const [projects, setProjects] = useState(() => {
 
-    const savedTasks = localStorage.getItem('project-progress-tasks')
+    const saved = localStorage.getItem('projects')
 
-    return savedTasks ? JSON.parse(savedTasks) : startTasks
+    if (saved) {
+
+      return JSON.parse(saved)
+
+    }
+
+    return [
+
+      {
+
+        id: 1,
+
+        name: 'Mein erstes Projekt',
+
+        tasks: [
+
+          { id: 1, text: 'Projektplanung', done: true },
+
+          { id: 2, text: 'Material beschaffen', done: false },
+
+          { id: 3, text: 'Montage durchführen', done: false },
+
+        ],
+
+      },
+
+    ]
 
   })
+
+  const [selectedProjectId, setSelectedProjectId] = useState(
+
+    projects[0]?.id ?? null
+
+  )
+
+  const [newProjectName, setNewProjectName] = useState('')
 
   const [newTask, setNewTask] = useState('')
 
   useEffect(() => {
 
-    localStorage.setItem(
+    localStorage.setItem('projects', JSON.stringify(projects))
 
-      'project-progress-tasks',
+  }, [projects])
 
-      JSON.stringify(tasks)
+  const selectedProject = projects.find(
+
+    (project) => project.id === selectedProjectId
+
+  )
+
+  const addProject = () => {
+
+    const name = newProjectName.trim()
+
+    if (!name) return
+
+    const newProject = {
+
+      id: Date.now(),
+
+      name,
+
+      tasks: [],
+
+    }
+
+    setProjects((currentProjects) => [
+
+      ...currentProjects,
+
+      newProject,
+
+    ])
+
+    setSelectedProjectId(newProject.id)
+
+    setNewProjectName('')
+
+  }
+
+  const deleteProject = (projectId) => {
+
+    const remainingProjects = projects.filter(
+
+      (project) => project.id !== projectId
 
     )
 
-  }, [tasks])
+    setProjects(remainingProjects)
 
-  const toggleTask = (id) => {
+    if (selectedProjectId === projectId) {
 
-    setTasks(
+      setSelectedProjectId(remainingProjects[0]?.id ?? null)
 
-      tasks.map((task) =>
+    }
 
-        task.id === id ? { ...task, done: !task.done } : task
+  }
+
+  const addTask = () => {
+
+    const text = newTask.trim()
+
+    if (!text || !selectedProject) return
+
+    setProjects((currentProjects) =>
+
+      currentProjects.map((project) =>
+
+        project.id === selectedProjectId
+
+          ? {
+
+              ...project,
+
+              tasks: [
+
+                ...project.tasks,
+
+                {
+
+                  id: Date.now(),
+
+                  text,
+
+                  done: false,
+
+                },
+
+              ],
+
+            }
+
+          : project
+
+      )
+
+    )
+
+    setNewTask('')
+
+  }
+
+  const toggleTask = (taskId) => {
+
+    setProjects((currentProjects) =>
+
+      currentProjects.map((project) =>
+
+        project.id === selectedProjectId
+
+          ? {
+
+              ...project,
+
+              tasks: project.tasks.map((task) =>
+
+                task.id === taskId
+
+                  ? { ...task, done: !task.done }
+
+                  : task
+
+              ),
+
+            }
+
+          : project
 
       )
 
@@ -48,47 +184,47 @@ function App() {
 
   }
 
-  const addTask = () => {
+  const deleteTask = (taskId) => {
 
-    const name = newTask.trim()
+    setProjects((currentProjects) =>
 
-    if (!name) return
+      currentProjects.map((project) =>
 
-    setTasks([
+        project.id === selectedProjectId
 
-      ...tasks,
+          ? {
 
-      {
+              ...project,
 
-        id: Date.now(),
+              tasks: project.tasks.filter(
 
-        name,
+                (task) => task.id !== taskId
 
-        done: false,
+              ),
 
-      },
+            }
 
-    ])
+          : project
 
-    setNewTask('')
+      )
 
-  }
-
-  const deleteTask = (id) => {
-
-    setTasks(tasks.filter((task) => task.id !== id))
+    )
 
   }
 
-  const completed = tasks.filter((task) => task.done).length
+  const completedTasks =
+
+    selectedProject?.tasks.filter((task) => task.done).length ?? 0
+
+  const totalTasks = selectedProject?.tasks.length ?? 0
 
   const progress =
 
-    tasks.length === 0
+    totalTasks === 0
 
       ? 0
 
-      : Math.round((completed / tasks.length) * 100)
+      : Math.round((completedTasks / totalTasks) * 100)
 
   return (
 
@@ -98,9 +234,9 @@ function App() {
 
         fontFamily: 'Arial, sans-serif',
 
-        maxWidth: '700px',
+        maxWidth: '800px',
 
-        margin: '50px auto',
+        margin: '40px auto',
 
         padding: '30px',
 
@@ -110,79 +246,31 @@ function App() {
 
       <h1>Project Progress</h1>
 
-      <p>Projektfortschritt einfach erfassen und verfolgen.</p>
+      <p>Mehrere Projekte einfach erfassen und verfolgen.</p>
 
-      <h2>Gesamtfortschritt: {progress} %</h2>
+      <h2>Neues Projekt</h2>
 
-      <div
-
-        style={{
-
-          width: '100%',
-
-          height: '28px',
-
-          background: '#e5e7eb',
-
-          borderRadius: '14px',
-
-          overflow: 'hidden',
-
-          marginBottom: '30px',
-
-        }}
-
-      >
-
-        <div
-
-          style={{
-
-            width: `${progress}%`,
-
-            height: '100%',
-
-            background: '#22c55e',
-
-            transition: 'width 0.3s',
-
-          }}
-
-        />
-
-      </div>
-
-      <h2>Neuen Arbeitsschritt hinzufügen</h2>
-
-      <div
-
-        style={{
-
-          display: 'flex',
-
-          gap: '10px',
-
-          marginBottom: '30px',
-
-        }}
-
-      >
+      <div style={{ display: 'flex', gap: '10px' }}>
 
         <input
 
           type="text"
 
-          value={newTask}
+          value={newProjectName}
 
-          onChange={(event) => setNewTask(event.target.value)}
+          onChange={(event) =>
+
+            setNewProjectName(event.target.value)
+
+          }
 
           onKeyDown={(event) => {
 
-            if (event.key === 'Enter') addTask()
+            if (event.key === 'Enter') addProject()
 
           }}
 
-          placeholder="Arbeitsschritt eingeben"
+          placeholder="Projektname eingeben"
 
           style={{
 
@@ -198,13 +286,11 @@ function App() {
 
         <button
 
-          onClick={addTask}
+          onClick={addProject}
 
           style={{
 
-            padding: '12px 18px',
-
-            fontSize: '16px',
+            padding: '12px 20px',
 
             cursor: 'pointer',
 
@@ -212,73 +298,73 @@ function App() {
 
         >
 
-          Hinzufügen
+          Projekt hinzufügen
 
         </button>
 
       </div>
 
-      <h2>Arbeitsschritte</h2>
+      <h2>Meine Projekte</h2>
 
-      {tasks.map((task) => (
+      {projects.length === 0 && (
+
+        <p>Noch kein Projekt vorhanden.</p>
+
+      )}
+
+      {projects.map((project) => (
 
         <div
 
-          key={task.id}
+          key={project.id}
 
           style={{
 
             display: 'flex',
 
-            alignItems: 'center',
-
-            gap: '12px',
-
-            padding: '14px',
+            gap: '10px',
 
             marginBottom: '10px',
-
-            border: '1px solid #ddd',
-
-            borderRadius: '8px',
 
           }}
 
         >
 
-          <input
+          <button
 
-            type="checkbox"
-
-            checked={task.done}
-
-            onChange={() => toggleTask(task.id)}
-
-          />
-
-          <span
+            onClick={() => setSelectedProjectId(project.id)}
 
             style={{
 
               flex: 1,
 
-              textDecoration: task.done ? 'line-through' : 'none',
+              padding: '12px',
+
+              cursor: 'pointer',
+
+              fontWeight:
+
+                project.id === selectedProjectId
+
+                  ? 'bold'
+
+                  : 'normal',
 
             }}
 
           >
 
-            {task.name}
+            {project.name}
 
-          </span>
+          </button>
 
           <button
 
-            onClick={() => deleteTask(task.id)}
+            onClick={() => deleteProject(project.id)}
 
             style={{
 
-              padding: '7px 12px',
+              padding: '12px',
 
               cursor: 'pointer',
 
@@ -294,15 +380,203 @@ function App() {
 
       ))}
 
-      <p>
+      {selectedProject && (
 
-        <strong>
+        <>
 
-          {completed} von {tasks.length} Arbeitsschritten abgeschlossen
+          <hr style={{ margin: '30px 0' }} />
 
-        </strong>
+          <h2>{selectedProject.name}</h2>
 
-      </p>
+          <h3>Gesamtfortschritt: {progress} %</h3>
+
+          <div
+
+            style={{
+
+              width: '100%',
+
+              height: '28px',
+
+              background: '#e5e7eb',
+
+              borderRadius: '20px',
+
+              overflow: 'hidden',
+
+              marginBottom: '30px',
+
+            }}
+
+          >
+
+            <div
+
+              style={{
+
+                width: `${progress}%`,
+
+                height: '100%',
+
+                background: '#22c55e',
+
+                transition: 'width 0.3s',
+
+              }}
+
+            />
+
+          </div>
+
+          <h2>Neuen Arbeitsschritt hinzufügen</h2>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+
+            <input
+
+              type="text"
+
+              value={newTask}
+
+              onChange={(event) =>
+
+                setNewTask(event.target.value)
+
+              }
+
+              onKeyDown={(event) => {
+
+                if (event.key === 'Enter') addTask()
+
+              }}
+
+              placeholder="Arbeitsschritt eingeben"
+
+              style={{
+
+                flex: 1,
+
+                padding: '12px',
+
+                fontSize: '16px',
+
+              }}
+
+            />
+
+            <button
+
+              onClick={addTask}
+
+              style={{
+
+                padding: '12px 20px',
+
+                cursor: 'pointer',
+
+              }}
+
+            >
+
+              Hinzufügen
+
+            </button>
+
+          </div>
+
+          <h2>Arbeitsschritte</h2>
+
+          {selectedProject.tasks.length === 0 && (
+
+            <p>Noch keine Arbeitsschritte vorhanden.</p>
+
+          )}
+
+          {selectedProject.tasks.map((task) => (
+
+            <div
+
+              key={task.id}
+
+              style={{
+
+                display: 'flex',
+
+                alignItems: 'center',
+
+                gap: '15px',
+
+                padding: '12px 0',
+
+                borderBottom: '1px solid #ddd',
+
+              }}
+
+            >
+
+              <input
+
+                type="checkbox"
+
+                checked={task.done}
+
+                onChange={() => toggleTask(task.id)}
+
+              />
+
+              <span
+
+                style={{
+
+                  flex: 1,
+
+                  textDecoration: task.done
+
+                    ? 'line-through'
+
+                    : 'none',
+
+                }}
+
+              >
+
+                {task.text}
+
+              </span>
+
+              <button
+
+                onClick={() => deleteTask(task.id)}
+
+                style={{
+
+                  padding: '8px 14px',
+
+                  cursor: 'pointer',
+
+                }}
+
+              >
+
+                Löschen
+
+              </button>
+
+            </div>
+
+          ))}
+
+          <p style={{ fontWeight: 'bold' }}>
+
+            {completedTasks} von {totalTasks} Arbeitsschritten
+
+            abgeschlossen
+
+          </p>
+
+        </>
+
+      )}
 
     </main>
 
