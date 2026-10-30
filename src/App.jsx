@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 
-
 import './App.css'
 
 function App() {
@@ -79,9 +78,20 @@ function App() {
 
   )
 
-  const getTaskStatus = (task) =>
+  const getTaskProgress = (task) => {
+    if (typeof task.progress === 'number' && Number.isFinite(task.progress)) {
+      return Math.max(0, Math.min(100, task.progress))
+    }
+    return task.status === 'done' || task.done ? 100 : 0
+  }
 
-    task.status || (task.done ? 'done' : 'open')
+  const getTaskStatus = (task) => {
+    if (typeof task.progress !== 'number') {
+      return task.status || (task.done ? 'done' : 'open')
+    }
+    const percent = getTaskProgress(task)
+    return percent === 100 ? 'done' : percent === 0 ? 'open' : 'progress'
+  }
 
   const getTaskPriority = (task) =>
 
@@ -237,6 +247,8 @@ function App() {
 
                   status: 'open',
 
+                  progress: 0,
+
                   priority: newPriority,
 
                   dueDate: newDueDate,
@@ -261,44 +273,17 @@ function App() {
 
   }
 
-  const changeTaskStatus = (taskId, newStatus) => {
-
-    setProjects((current) =>
-
-      current.map((project) =>
-
-        project.id === selectedProjectId
-
-          ? {
-
-              ...project,
-
-              tasks: project.tasks.map((task) =>
-
-                task.id === taskId
-
-                  ? {
-
-                      ...task,
-
-                      status: newStatus,
-
-                      done: newStatus === 'done',
-
-                    }
-
-                  : task
-
-              ),
-
-            }
-
-          : project
-
-      )
-
-    )
-
+  const changeTaskProgress = (taskId, value) => {
+    const progress = Math.max(0, Math.min(100, Number(value)))
+    if (!Number.isFinite(progress)) return
+    setProjects((current) => current.map((project) =>
+      project.id === selectedProjectId
+        ? { ...project, tasks: project.tasks.map((task) =>
+            task.id === taskId
+              ? { ...task, progress, done: progress === 100,
+                  status: progress === 100 ? 'done' : progress === 0 ? 'open' : 'progress' }
+              : task) }
+        : project))
   }
 
   const changeTaskPriority = (taskId, priority) => {
@@ -469,7 +454,7 @@ function App() {
 
       ? 0
 
-      : Math.round((completedTasks / totalTasks) * 100)
+      : Math.round(selectedProject.tasks.reduce((sum, task) => sum + getTaskProgress(task), 0) / totalTasks)
 
   const dashboardCard = {
 
@@ -1177,31 +1162,20 @@ function App() {
 
                     </select>
 
-                    <select
-
-                      value={status}
-
-                      onChange={(event) =>
-
-                        changeTaskStatus(
-
-                          task.id,
-
-                          event.target.value
-
-                        )
-
-                      }
-
-                    >
-
-                      <option value="open">Offen</option>
-
-                      <option value="progress">In Arbeit</option>
-
-                      <option value="done">Erledigt</option>
-
-                    </select>
+                    <label style={{ flex: '1 1 220px', minWidth: 0 }}>
+                      <strong>Fortschritt: {getTaskProgress(task)} %</strong>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={getTaskProgress(task)}
+                        aria-label={`Fortschritt für ${task.text}`}
+                        onChange={(event) => changeTaskProgress(task.id, event.target.value)}
+                        style={{ display: 'block', width: '100%', minHeight: '44px', margin: '4px 0', accentColor: '#22c55e' }}
+                      />
+                      <span>{status === 'done' ? 'Erledigt' : status === 'progress' ? 'In Arbeit' : 'Offen'}</span>
+                    </label>
 
                     <button
 
