@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import './App.css'
 
@@ -74,7 +74,90 @@ function visibleProjectRows(tasks, expandedGroups = {}) {
   return rows.filter((row) => row.visible)
 }
 
+// Evidence files are stored as Blobs; project history keeps only their references.
+function validateEvidenceFiles(files) {
+  if (files.length > 10) throw new Error('Pro Meldung sind höchstens 10 Dateien möglich.')
+  const types = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif', avif: 'image/avif', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', webm: 'video/webm', ogv: 'video/ogg', mpeg: 'video/mpeg', mpg: 'video/mpeg', avi: 'video/x-msvideo', '3gp': 'video/3gpp' }
+  return files.map((file) => {
+    const extension = file.name.split('.').pop().toLowerCase()
+    const type = file.type || types[extension] || ''
+    if (!Object.values(types).includes(type) || extension === 'svg') throw new Error(`„${file.name}“ ist kein unterstütztes Foto oder Video.`)
+    if (file.size === 0) throw new Error(`„${file.name}“ ist leer.`)
+    if (file.size > 100 * 1024 * 1024) throw new Error(`„${file.name}“ ist größer als 100 MB. Bitte eine kleinere Datei auswählen.`)
+    return { file, type }
+  })
+}
+
+function openEvidenceDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!globalThis.indexedDB) { reject(new Error('Dateispeicherung ist in diesem Browser nicht verfügbar.')); return }
+    const request = indexedDB.open('project-progress-evidence', 1)
+    request.onupgradeneeded = () => request.result.createObjectStore('files', { keyPath: 'id' })
+    request.onerror = () => reject(request.error || new Error('Dateispeicher konnte nicht geöffnet werden.'))
+    request.onsuccess = () => resolve(request.result)
+  })
+}
+
+async function evidenceTransaction(mode, action) {
+  const database = await openEvidenceDatabase()
+  return new Promise((resolve, reject) => {
+    let result
+    let transaction
+    try {
+      transaction = database.transaction('files', mode)
+      transaction.oncomplete = () => { database.close(); resolve(result) }
+      transaction.onabort = () => { database.close(); reject(transaction.error || new Error('Dateien konnten nicht gespeichert werden.')) }
+      action(transaction.objectStore('files'), (value) => { result = value })
+    } catch (error) {
+      if (transaction) transaction.abort()
+      database.close()
+      reject(error)
+    }
+  })
+}
+
+async function storeEvidenceFiles(records) {
+  if (!records.length) return
+  await evidenceTransaction('readwrite', (store) => records.forEach((record) => store.put({ id: record.id, blob: record.blob })))
+}
+
+async function readEvidenceFile(id) {
+  return evidenceTransaction('readonly', (store, setResult) => {
+    const request = store.get(id)
+    request.onsuccess = () => setResult(request.result?.blob || null)
+  })
+}
+
+async function removeUncommittedEvidence(ids) {
+  if (!ids.length) return
+  await evidenceTransaction('readwrite', (store) => ids.forEach((id) => store.delete(id)))
+}
+// End evidence storage helpers.
+
+function EvidenceAttachment({ attachment }) {
+  const [url, setUrl] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl = ''
+    readEvidenceFile(attachment.id).then((blob) => {
+      if (cancelled) return
+      if (!blob) { setError('Datei in diesem Browser nicht gefunden.'); return }
+      objectUrl = URL.createObjectURL(blob)
+      setUrl(objectUrl)
+    }).catch(() => { if (!cancelled) setError('Datei konnte nicht geladen werden.') })
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [attachment.id])
+  return <figure style={{ margin: '8px 0', maxWidth: '320px' }}>
+    {url && attachment.type.startsWith('image/') && <img src={url} alt={`Foto: ${attachment.name}`} loading="lazy" onError={() => setError('Keine Vorschau verfügbar. Die Originaldatei kann heruntergeladen werden.')} style={{ display: 'block', maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />}
+    {url && attachment.type.startsWith('video/') && <video src={url} aria-label={`Video: ${attachment.name}`} controls playsInline preload="metadata" onError={() => setError('Dieses Videoformat kann hier nicht abgespielt werden. Bitte die Originaldatei herunterladen.')} style={{ display: 'block', maxWidth: '100%', maxHeight: '240px' }} />}
+    <figcaption style={{ fontSize: '13px', overflowWrap: 'anywhere' }}>{url ? <a href={url} download={attachment.name}>{attachment.name} herunterladen</a> : attachment.name}</figcaption>
+    {error && <p role="status" style={{ fontSize: '13px' }}>{error}</p>}
+  </figure>
+}
+
 function ProgressHistory({ task }) {
+  const [showReports, setShowReports] = useState(false)
   const history = task.progressHistory || []
   if (!history.length) {
     return <p style={{ fontSize: '14px', color: '#555' }}>Noch keine datierte Fortschrittsmeldung. Stelle den Slider ein und tippe auf „Fortschritt melden“.</p>
@@ -100,14 +183,18 @@ function ProgressHistory({ task }) {
         {history.length > 1 && <text x="580" y="215" textAnchor="end" fontSize="12" fill="#334155">{dateLabel(history[history.length - 1])}</text>}
         <text x="580" y="228" textAnchor="end" fontSize="11" fill="#475569">Datum / Uhrzeit</text>
       </svg>
-      <details style={{ marginTop: '8px' }}>
+      <details onToggle={(event) => setShowReports(event.currentTarget.open)} style={{ marginTop: '8px' }}>
         <summary style={{ cursor: 'pointer', padding: '8px 0' }}>Meldungen anzeigen ({history.length})</summary>
-        <div style={{ overflowX: 'auto' }}>
+        {showReports && <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-            <thead><tr><th scope="col">Datum / Uhrzeit</th><th scope="col">Fortschritt</th></tr></thead>
-            <tbody>{history.map((entry, index) => <tr key={index}><td style={{ padding: '6px 8px 6px 0' }}><time dateTime={entry.recordedAt}>{dateLabel(entry)}</time></td><td>{entry.progress} %</td></tr>)}</tbody>
+            <thead><tr><th scope="col">Datum / Uhrzeit</th><th scope="col">Fortschritt</th><th scope="col">Kommentar / Belege</th></tr></thead>
+            <tbody>{history.map((entry, index) => <tr key={index}><td style={{ padding: '6px 8px 6px 0' }}><time dateTime={entry.recordedAt}>{dateLabel(entry)}</time></td><td style={{ padding: '6px 12px 6px 0', verticalAlign: 'top' }}>{entry.progress} %</td><td style={{ minWidth: '180px', verticalAlign: 'top', padding: '6px 0' }}>
+              {entry.comment && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '0 0 8px' }}>{entry.comment}</p>}
+              {(entry.attachments || []).map((attachment) => <EvidenceAttachment key={attachment.id} attachment={attachment} />)}
+              {!entry.comment && !(entry.attachments || []).length && <span>–</span>}
+            </td></tr>)}</tbody>
           </table>
-        </div>
+        </div>}
       </details>
     </section>
   )
@@ -161,6 +248,10 @@ function App() {
 
   )
 
+  const projectsRef = useRef(projects)
+  const [evidenceDrafts, setEvidenceDrafts] = useState({})
+  const [reportErrors, setReportErrors] = useState({})
+  const [savingReport, setSavingReport] = useState('')
   const [expandedGroups, setExpandedGroups] = useState({})
   const [progressDrafts, setProgressDrafts] = useState({})
   const [importPreview, setImportPreview] = useState(null)
@@ -187,6 +278,7 @@ function App() {
 
   useEffect(() => {
 
+    projectsRef.current = projects
     localStorage.setItem('projects', JSON.stringify(projects))
 
   }, [projects])
@@ -398,26 +490,62 @@ function App() {
     setProgressDrafts((current) => ({ ...current, [`${selectedProjectId}:${taskId}`]: progress }))
   }
 
-  const reportTaskProgress = (task) => {
-    const key = `${selectedProjectId}:${task.id}`
+  const updateEvidenceDraft = (taskId, changes) => {
+    const key = `${selectedProjectId}:${taskId}`
+    setEvidenceDrafts((current) => ({ ...current, [key]: { comment: '', files: [], ...current[key], ...changes } }))
+    setReportErrors((current) => ({ ...current, [key]: '' }))
+  }
+
+  const chooseEvidenceFiles = (taskId, event) => {
+    const selected = Array.from(event.target.files || [])
+    event.target.value = ''
+    const key = `${selectedProjectId}:${taskId}`
+    const combined = [...(evidenceDrafts[key]?.files || []), ...selected]
+    try {
+      validateEvidenceFiles(combined)
+      updateEvidenceDraft(taskId, { files: combined })
+    } catch (error) {
+      setReportErrors((current) => ({ ...current, [key]: error.message }))
+    }
+  }
+
+  const reportTaskProgress = async (task) => {
+    if (savingReport) return
+    const projectId = selectedProjectId
+    const key = `${projectId}:${task.id}`
     const progress = progressDrafts[key] ?? getTaskProgress(task)
-    const history = task.progressHistory || []
-    if (history.length && progress === getTaskProgress(task)) return
-    const recordedAt = new Date().toISOString()
-    setProjects((current) => current.map((project) =>
-      project.id === selectedProjectId
-        ? { ...project, tasks: project.tasks.map((item) =>
-            item.id === task.id
-              ? { ...item, progress, done: progress === 100,
-                  status: progress === 100 ? 'done' : progress === 0 ? 'open' : 'progress',
-                  progressHistory: [...(item.progressHistory || []), { progress, recordedAt }] }
-              : item) }
-        : project))
-    setProgressDrafts((current) => {
-      const next = { ...current }
-      delete next[key]
-      return next
-    })
+    const draft = evidenceDrafts[key] || { comment: '', files: [] }
+    const comment = draft.comment.trim()
+    if ((task.progressHistory || []).length && progress === getTaskProgress(task) && !comment && !draft.files.length) return
+    const records = []
+    setSavingReport(key)
+    setReportErrors((current) => ({ ...current, [key]: '' }))
+    try {
+      for (const { file, type } of validateEvidenceFiles(draft.files)) {
+        records.push({ id: crypto.randomUUID(), name: file.name, type, size: file.size, blob: new Blob([file], { type }) })
+      }
+      await storeEvidenceFiles(records)
+      const current = projectsRef.current
+      if (!current.some((project) => project.id === projectId && project.tasks.some((item) => item.id === task.id))) throw new Error('Dieser Vorgang ist nicht mehr vorhanden.')
+      const recordedAt = new Date().toISOString()
+      const attachments = records.map(({ id, name, type, size }) => ({ id, name, type, size }))
+      const next = current.map((project) => project.id === projectId
+        ? { ...project, tasks: project.tasks.map((item) => item.id === task.id
+            ? { ...item, progress, done: progress === 100, status: progress === 100 ? 'done' : progress === 0 ? 'open' : 'progress',
+                progressHistory: [...(item.progressHistory || []), { progress, recordedAt, comment, attachments }] }
+            : item) }
+        : project)
+      localStorage.setItem('projects', JSON.stringify(next))
+      projectsRef.current = next
+      setProjects(next)
+      setProgressDrafts((current) => { const next = { ...current }; delete next[key]; return next })
+      setEvidenceDrafts((current) => { const next = { ...current }; delete next[key]; return next })
+    } catch (error) {
+      try { await removeUncommittedEvidence(records.map((record) => record.id)) } catch { /* Keep unreferenced files if cleanup fails. */ }
+      setReportErrors((current) => ({ ...current, [key]: `Nicht gespeichert: ${error.message || 'Browserspeicher nicht verfügbar oder voll.'} Dein Entwurf bleibt erhalten.` }))
+    } finally {
+      setSavingReport('')
+    }
   }
 
   const changeTaskPriority = (taskId, priority) => {
@@ -1183,7 +1311,9 @@ function App() {
 
             const editing = editingTaskId === task.id
             const draftProgress = progressDrafts[`${selectedProjectId}:${task.id}`] ?? getTaskProgress(task)
-            const canReportProgress = !(task.progressHistory || []).length || draftProgress !== getTaskProgress(task)
+            const evidenceKey = `${selectedProjectId}:${task.id}`
+            const evidenceDraft = evidenceDrafts[evidenceKey] || { comment: '', files: [] }
+            const canReportProgress = !(task.progressHistory || []).length || draftProgress !== getTaskProgress(task) || Boolean(evidenceDraft.comment.trim()) || evidenceDraft.files.length > 0
 
             return (
 
@@ -1380,15 +1510,25 @@ function App() {
                         max="100"
                         step="5"
                         value={draftProgress}
+                        disabled={Boolean(savingReport)}
                         aria-label={`Fortschritt für ${task.text}`}
                         onChange={(event) => setTaskProgressDraft(task.id, event.target.value)}
                         style={{ display: 'block', width: '100%', minHeight: '44px', margin: '4px 0', accentColor: '#22c55e' }}
                       />
                       <span>Gespeichert: {getTaskProgress(task)} % · {status === 'done' ? 'Erledigt' : status === 'progress' ? 'In Arbeit' : 'Offen'}</span>
                     </label>
-                    <div style={{ flex: '1 1 180px' }}>
-                      <button onClick={() => reportTaskProgress(task)} disabled={!canReportProgress} aria-label={`Fortschritt melden für ${task.text}`} style={{ minHeight: '44px' }}>Fortschritt melden</button>
-                      {draftProgress !== getTaskProgress(task) && <p role="status" style={{ fontSize: '14px', margin: '6px 0' }}>Noch nicht gemeldet</p>}
+                    <div style={{ flex: '1 1 100%', minWidth: 0, textAlign: 'left', borderTop: '1px solid #ddd', paddingTop: '12px' }}>
+                      <label style={{ display: 'block' }}><strong>Kommentar zur Fortschrittsmeldung</strong>
+                        <textarea aria-label={`Kommentar zu ${task.text}`} value={evidenceDraft.comment} onChange={(event) => updateEvidenceDraft(task.id, { comment: event.target.value })} maxLength={4000} rows={3} placeholder="Was wurde erledigt?" disabled={Boolean(savingReport)} style={{ display: 'block', boxSizing: 'border-box', width: '100%', padding: '10px', fontSize: '16px', margin: '6px 0 12px' }} />
+                      </label>
+                      <label><strong>Fotos / Videos hinzufügen</strong>
+                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,image/bmp,image/tiff,video/*,.heic,.heif,.mov,.m4v" multiple aria-label={`Fotos und Videos für ${task.text}`} onChange={(event) => chooseEvidenceFiles(task.id, event)} disabled={Boolean(savingReport)} style={{ display: 'block', maxWidth: '100%', margin: '8px 0' }} />
+                      </label>
+                      <p style={{ fontSize: '13px' }}>Bis zu 10 Dateien, je 100 MB. Kommentar und Belege werden mit „Fortschritt melden“ gespeichert – auch ohne Änderung des Prozentwerts. Dateien bleiben in diesem Browser.</p>
+                      {evidenceDraft.files.length > 0 && <ul>{evidenceDraft.files.map((file, index) => <li key={index} style={{ overflowWrap: 'anywhere', marginBottom: '6px' }}>{file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB){' '}<button type="button" disabled={Boolean(savingReport)} aria-label={`Auswahl entfernen: ${file.name}`} onClick={() => updateEvidenceDraft(task.id, { files: evidenceDraft.files.filter((_, itemIndex) => itemIndex !== index) })}>Auswahl entfernen</button></li>)}</ul>}
+                      <button onClick={() => reportTaskProgress(task)} disabled={!canReportProgress || Boolean(savingReport)} aria-label={`Fortschritt melden für ${task.text}`} style={{ minHeight: '44px' }}>{savingReport === evidenceKey ? 'Meldung wird gespeichert …' : 'Fortschritt melden'}</button>
+                      {canReportProgress && <p role="status" style={{ fontSize: '14px', margin: '6px 0' }}>Noch nicht gemeldet</p>}
+                      {reportErrors[evidenceKey] && <p role="alert" style={{ color: '#b91c1c' }}>{reportErrors[evidenceKey]}</p>}
                     </div>
 
                     <button
