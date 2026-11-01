@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 
 import './App.css'
 
+function getInitialProjectId(projects, savedId) {
+  const remembered = projects.find((project) => String(project.id) === savedId)
+  if (remembered) return remembered.id
+  const imported = [...projects].reverse().find((project) => project.importSource === 'ms-project')
+  return imported?.id ?? projects[0]?.id ?? null
+}
+
 // MS Project import helpers: kept pure so updates can be checked before saving.
 function parseProjectXml(xml, fileName) {
   if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('XML mit Dokumenttyp- oder Entity-Deklarationen wird nicht unterstützt.')
@@ -256,11 +263,20 @@ function App() {
 
   })
 
-  const [selectedProjectId, setSelectedProjectId] = useState(
+  const [selectedProjectId, setSelectedProjectId] = useState(() => {
+    let savedId = null
+    try { savedId = localStorage.getItem('project-progress-selected-project') } catch { /* Use the available project list. */ }
+    return getInitialProjectId(projects, savedId)
+  })
 
-    projects[0]?.id ?? null
-
-  )
+  useEffect(() => {
+    try {
+      if (selectedProjectId === null) localStorage.removeItem('project-progress-selected-project')
+      else localStorage.setItem('project-progress-selected-project', String(selectedProjectId))
+    } catch (error) {
+      console.warn('Die Projektauswahl konnte nicht gespeichert werden.', error)
+    }
+  }, [selectedProjectId])
 
   const projectsRef = useRef(projects)
   const [evidenceDrafts, setEvidenceDrafts] = useState({})
