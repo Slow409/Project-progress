@@ -2,6 +2,60 @@ import { useEffect, useState } from 'react'
 
 import './App.css'
 
+// MS Project import helpers: kept pure so updates can be checked before saving.
+function parseProjectXml(xml, fileName) {
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('XML mit Dokumenttyp- oder Entity-Deklarationen wird nicht unterstützt.')
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagNameNS('*', 'parsererror').length) throw new Error('Die XML-Datei ist beschädigt oder unvollständig.')
+  const root = doc.documentElement
+  if (!root || root.localName !== 'Project' || root.namespaceURI !== 'http://schemas.microsoft.com/project') throw new Error('Bitte eine XML-Datei aus Microsoft Project auswählen; MPP-Dateien zuerst als XML exportieren.')
+  const nodes = (parent, name) => Array.from(parent?.childNodes || []).filter((node) => node.nodeType === 1 && node.localName === name)
+  const field = (parent, name) => nodes(parent, name)[0]?.textContent?.trim() || ''
+  const group = (name, item) => nodes(nodes(root, name)[0], item)
+  const date = (value) => /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : ''
+  const resources = group('Resources', 'Resource').filter((node) => field(node, 'UID') !== '0' && field(node, 'Name') && field(node, 'IsNull') !== '1').map((node) => ({ uid: field(node, 'UID'), name: field(node, 'Name') }))
+  const assignments = group('Assignments', 'Assignment').map((node) => ({ taskUid: field(node, 'TaskUID'), resourceUid: field(node, 'ResourceUID'), units: field(node, 'Units'), work: field(node, 'Work') }))
+  const seen = new Set()
+  const tasks = group('Tasks', 'Task').filter((node) => field(node, 'UID') !== '0' && field(node, 'IsNull') !== '1').map((node) => {
+    const uid = field(node, 'UID')
+    if (!uid || seen.has(uid)) throw new Error('Fehlende oder doppelte Vorgangs-UID. Bitte den Plan erneut aus MS Project exportieren.')
+    seen.add(uid)
+    const percent = Number(field(node, 'PercentComplete') || '0')
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error('Ungültiger Fortschrittswert im Projektplan.')
+    return { msProjectUid: uid, text: field(node, 'Name') || `Vorgang ${uid}`, wbs: field(node, 'WBS') || field(node, 'OutlineNumber'), outlineLevel: Number(field(node, 'OutlineLevel')) || 1,
+      isSummary: field(node, 'Summary') === '1', isMilestone: field(node, 'Milestone') === '1', planStart: date(field(node, 'Start')), planFinish: date(field(node, 'Finish')), planDuration: field(node, 'Duration'),
+      dueDate: date(field(node, 'Finish')), importedProgress: percent, resourceNames: resources.filter((resource) => assignments.some((assignment) => assignment.taskUid === uid && assignment.resourceUid === resource.uid)).map((resource) => resource.name),
+      predecessorUids: nodes(node, 'PredecessorLink').map((link) => field(link, 'PredecessorUID')) }
+  })
+  if (!tasks.length) throw new Error('Die Datei enthält keine importierbaren Vorgänge.')
+  const starts = tasks.map((task) => task.planStart).filter(Boolean).sort()
+  const finishes = tasks.map((task) => task.planFinish).filter(Boolean).sort()
+  return { name: field(root, 'Title') || field(root, 'Name') || fileName.replace(/\.xml$/i, ''), sourceGuid: field(root, 'GUID').replace(/[{}]/g, '').toLowerCase(), fileName, resources, assignments, tasks,
+    startDate: starts[0] || date(field(root, 'StartDate')), endDate: finishes[finishes.length - 1] || date(field(root, 'FinishDate')) }
+}
+
+function mergeProjectPlan(plan, existing, projectId, importedAt) {
+  if (existing?.sourceGuid && plan.sourceGuid && existing.sourceGuid !== plan.sourceGuid) throw new Error('Dieser Plan gehört zu einem anderen Projekt. Bitte als neues Projekt importieren.')
+  const previous = new Map((existing?.tasks || []).filter((task) => task.msProjectUid).map((task) => [task.msProjectUid, task]))
+  const incoming = new Set(plan.tasks.map((task) => task.msProjectUid))
+  const tasks = plan.tasks.map((task) => {
+    const old = previous.get(task.msProjectUid)
+    const progress = old ? (old.progress ?? (old.status === 'done' || old.done ? 100 : 0)) : task.importedProgress
+    return { ...old, ...task, id: old?.id ?? `${projectId}:ms:${task.msProjectUid}`, priority: old?.priority || 'medium', progress,
+      done: old ? old.done : progress === 100, status: old?.status || (progress === 100 ? 'done' : progress === 0 ? 'open' : 'progress'),
+      progressHistory: old?.progressHistory || [], removedFromPlan: false }
+  })
+  // Missing tasks stay available with their reports; manually added tasks also survive.
+  for (const old of existing?.tasks || []) {
+    if (!old.msProjectUid) tasks.push(old)
+    else if (!incoming.has(old.msProjectUid)) tasks.push({ ...old, removedFromPlan: true })
+  }
+  return { ...existing, id: projectId, name: plan.name, startDate: plan.startDate, endDate: plan.endDate, status: existing?.status || 'planned',
+    importSource: 'ms-project', sourceGuid: plan.sourceGuid || existing?.sourceGuid || '', sourceFileName: plan.fileName, importedAt,
+    resources: plan.resources, assignments: plan.assignments, tasks }
+}
+// End MS Project import helpers.
+
 function ProgressHistory({ task }) {
   const history = task.progressHistory || []
   if (!history.length) {
@@ -90,6 +144,11 @@ function App() {
   )
 
   const [progressDrafts, setProgressDrafts] = useState({})
+  const [importPreview, setImportPreview] = useState(null)
+  const [importTarget, setImportTarget] = useState('new')
+  const [importError, setImportError] = useState('')
+  const [importNotice, setImportNotice] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
 
   const [newProjectName, setNewProjectName] = useState('')
 
@@ -474,43 +533,56 @@ function App() {
 
   }
 
-  const totalTasks = selectedProject?.tasks.length ?? 0
+  const readProjectPlan = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setImportError('')
+    setImportNotice('')
+    setImportPreview(null)
+    setImportBusy(true)
+    try {
+      if (file.size > 10 * 1024 * 1024) throw new Error('Bitte eine XML-Datei unter 10 MB auswählen.')
+      const plan = parseProjectXml(await file.text(), file.name)
+      const matching = projects.filter((project) => project.importSource === 'ms-project' && plan.sourceGuid && project.sourceGuid === plan.sourceGuid)
+      setImportTarget(matching.length === 1 ? String(matching[0].id) : 'new')
+      setImportPreview(plan)
+    } catch (error) {
+      setImportError(error.message || 'Der Projektplan konnte nicht gelesen werden.')
+    } finally {
+      setImportBusy(false)
+    }
+  }
 
-  const completedTasks =
+  const importExisting = importTarget === 'new' ? null : projects.find((project) => String(project.id) === importTarget)
+  const importMatches = importPreview?.tasks.filter((task) => importExisting?.tasks.some((old) => old.msProjectUid === task.msProjectUid)).length || 0
+  const importMissing = importExisting?.tasks.filter((old) => old.msProjectUid && !old.removedFromPlan && !importPreview?.tasks.some((task) => task.msProjectUid === old.msProjectUid)).length || 0
 
-    selectedProject?.tasks.filter(
+  const confirmProjectPlan = () => {
+    if (!importPreview) return
+    try {
+      const id = importExisting?.id ?? `project:${crypto.randomUUID()}`
+      const project = mergeProjectPlan(importPreview, importExisting, id, new Date().toISOString())
+      const next = importExisting ? projects.map((old) => old.id === id ? project : old) : [...projects, project]
+      // Verify persistent storage before claiming a successful import.
+      localStorage.setItem('projects', JSON.stringify(next))
+      setProjects(next)
+      setSelectedProjectId(id)
+      setImportNotice(`${importExisting ? 'Projektplan aktualisiert' : 'Projektplan importiert'}: ${importPreview.tasks.length} Vorgänge, ${importPreview.resources.length} Ressourcen. Bestehende Fortschrittsmeldungen bleiben erhalten.`)
+      setImportPreview(null)
+      setImportError('')
+    } catch (error) {
+      setImportError(error.name === 'QuotaExceededError' ? 'Nicht genügend Browserspeicher. Der Import wurde nicht gespeichert.' : error.message)
+    }
+  }
 
-      (task) => getTaskStatus(task) === 'done'
-
-    ).length ?? 0
-
-  const openTasks =
-
-    selectedProject?.tasks.filter(
-
-      (task) => getTaskStatus(task) === 'open'
-
-    ).length ?? 0
-
-  const progressTasks =
-
-    selectedProject?.tasks.filter(
-
-      (task) => getTaskStatus(task) === 'progress'
-
-    ).length ?? 0
-
-  const overdueTasks =
-
-    selectedProject?.tasks.filter(isOverdue).length ?? 0
-
-  const progress =
-
-    totalTasks === 0
-
-      ? 0
-
-      : Math.round(selectedProject.tasks.reduce((sum, task) => sum + getTaskProgress(task), 0) / totalTasks)
+  const activeTasks = (selectedProject?.tasks || []).filter((task) => !task.isSummary && !task.removedFromPlan)
+  const totalTasks = activeTasks.length
+  const completedTasks = activeTasks.filter((task) => getTaskStatus(task) === 'done').length
+  const openTasks = activeTasks.filter((task) => getTaskStatus(task) === 'open').length
+  const progressTasks = activeTasks.filter((task) => getTaskStatus(task) === 'progress').length
+  const overdueTasks = activeTasks.filter(isOverdue).length
+  const progress = totalTasks === 0 ? 0 : Math.round(activeTasks.reduce((sum, task) => sum + getTaskProgress(task), 0) / totalTasks)
 
   const dashboardCard = {
 
@@ -553,6 +625,38 @@ function App() {
         einfach verfolgen.
 
       </p>
+
+      <section aria-labelledby="plan-import-title" style={{ border: '1px solid #ddd', borderRadius: '10px', padding: '16px', margin: '24px 0', textAlign: 'left' }}>
+        <h2 id="plan-import-title">Projektplan importieren / aktualisieren</h2>
+        <p>MS-Project-XML auswählen, Vorschau prüfen und Import bestätigen. Der Plan wird in diesem Browser gespeichert.</p>
+        <label htmlFor="project-plan-file"><strong>MS-Project-XML auswählen</strong></label>
+        <input id="project-plan-file" type="file" accept=".xml,text/xml,application/xml" onChange={readProjectPlan} disabled={importBusy} style={{ display: 'block', maxWidth: '100%', margin: '12px 0' }} />
+        {importBusy && <p role="status">Projektplan wird gelesen …</p>}
+        {importError && <p role="alert" style={{ color: '#b91c1c' }}>{importError}</p>}
+        {importNotice && <p role="status" style={{ color: '#166534' }}>{importNotice}</p>}
+        {importPreview && <div>
+          <h3>Importvorschau: {importPreview.name}</h3>
+          <p>{importPreview.tasks.length} Vorgänge, davon {importPreview.tasks.filter((task) => task.isSummary).length} Sammelvorgänge · {importPreview.resources.length} Ressourcen · {importPreview.assignments.length} Zuordnungen</p>
+          <label htmlFor="project-import-target">Importziel</label>{' '}
+          <select id="project-import-target" value={importTarget} onChange={(event) => setImportTarget(event.target.value)} style={{ maxWidth: '100%', padding: '8px' }}>
+            <option value="new">Als neues Projekt importieren</option>
+            {projects.filter((project) => project.importSource === 'ms-project' && (!project.sourceGuid || !importPreview.sourceGuid || project.sourceGuid === importPreview.sourceGuid)).map((project) => <option key={project.id} value={String(project.id)}>Aktualisieren: {project.name}</option>)}
+          </select>
+          {importExisting && <p>{importMatches} Vorgänge wiedererkannt · {importPreview.tasks.length - importMatches} neue Vorgänge · {importMissing} nicht mehr im Plan. Deren bisherige Meldungen bleiben unter „Nicht mehr im aktuellen Plan“ erhalten.</p>}
+          <p>Beim Aktualisieren bleiben gemeldete Prozentwerte und Verläufe erhalten. Zuordnung erfolgt über die Vorgangs-UID. Sammelvorgänge werden im Gesamtfortschritt nicht doppelt gezählt.</p>
+          <div style={{ overflowX: 'auto', maxHeight: '340px', marginBottom: '12px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead><tr><th>PSP / UID</th><th>Vorgang</th><th>Anfang</th><th>Ende</th><th>Ressourcen</th><th>XML-Fortschritt</th></tr></thead>
+              <tbody>{importPreview.tasks.map((task) => <tr key={task.msProjectUid} style={{ borderBottom: '1px solid #ddd' }}>
+                <td style={{ padding: '8px' }}>{task.wbs} / {task.msProjectUid}</td><td style={{ padding: '8px', fontWeight: task.isSummary ? 'bold' : 'normal' }}>{task.text}{task.isSummary ? ' (Sammelvorgang)' : ''}</td>
+                <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{formatDate(task.planStart)}</td><td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{formatDate(task.planFinish)}</td><td style={{ padding: '8px' }}>{task.resourceNames.join(', ') || '–'}</td><td style={{ padding: '8px' }}>{task.importedProgress} %</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+          <button onClick={confirmProjectPlan} style={{ minHeight: '44px', marginRight: '10px' }}>{importExisting ? 'Projektplan aktualisieren' : 'Projektplan importieren'}</button>
+          <button onClick={() => { setImportPreview(null); setImportError('') }} style={{ minHeight: '44px' }}>Import abbrechen</button>
+        </div>}
+      </section>
 
       <h2>Neues Projekt</h2>
 
@@ -1025,6 +1129,13 @@ function App() {
           <h2>Arbeitsschritte</h2>
 
           {selectedProject.tasks.map((task) => {
+            if (task.isSummary || task.removedFromPlan) return (
+              <section key={task.id} style={{ margin: '12px 0', padding: '14px', background: '#f1f5f9', borderRadius: '8px', textAlign: 'left', borderLeft: '4px solid #64748b' }}>
+                <strong>{task.wbs ? `${task.wbs} · ` : ''}{task.text}</strong>
+                <p style={{ margin: '6px 0' }}>{task.removedFromPlan ? 'Nicht mehr im aktuellen Plan' : 'Sammelvorgang'} · {formatDate(task.planStart)} – {formatDate(task.planFinish)}</p>
+                {task.removedFromPlan && <ProgressHistory task={task} />}
+              </section>
+            )
 
             const status = getTaskStatus(task)
 
@@ -1160,7 +1271,8 @@ function App() {
 
                     <div style={{ flex: '1 1 250px' }}>
 
-                      <strong>{task.text}</strong>
+                      <strong>{task.wbs ? `${task.wbs} · ` : ''}{task.text}</strong>
+                      {task.msProjectUid && <p style={{ fontSize: '14px', margin: '6px 0' }}>Plan: {formatDate(task.planStart)} – {formatDate(task.planFinish)}<br />Ressourcen: {task.resourceNames?.join(', ') || 'Nicht zugeordnet'}{task.isMilestone ? ' · Meilenstein' : ''}</p>}
 
                       <div>
 
