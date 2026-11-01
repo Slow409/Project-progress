@@ -134,6 +134,20 @@ async function removeUncommittedEvidence(ids) {
 }
 // End evidence storage helpers.
 
+function EvidencePickers({ taskName, disabled, onSelect }) {
+  const cameraInput = useRef(null)
+  const archiveInput = useRef(null)
+  return <div style={{ margin: '8px 0 12px' }}>
+    <strong>Fotos / Videos hinzufügen</strong>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
+      <button type="button" disabled={disabled} aria-label={`Foto aufnehmen für ${taskName}`} onClick={() => cameraInput.current?.click()} style={{ minHeight: '48px', fontSize: '16px', padding: '10px 16px' }}>Foto aufnehmen</button>
+      <button type="button" disabled={disabled} aria-label={`Fotoarchiv und Dateien für ${taskName}`} onClick={() => archiveInput.current?.click()} style={{ minHeight: '48px', fontSize: '16px', padding: '10px 16px' }}>Aus Fotoarchiv / Dateien auswählen</button>
+    </div>
+    <input ref={cameraInput} type="file" accept="image/*" capture="environment" aria-label={`Kameraaufnahme für ${taskName}`} onChange={onSelect} disabled={disabled} hidden />
+    <input ref={archiveInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,image/bmp,image/tiff,video/*,.heic,.heif,.mov,.m4v" multiple aria-label={`Archivauswahl für ${taskName}`} onChange={onSelect} disabled={disabled} hidden />
+  </div>
+}
+
 function EvidenceAttachment({ attachment }) {
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
@@ -1521,9 +1535,7 @@ function App() {
                       <label style={{ display: 'block' }}><strong>Kommentar zur Fortschrittsmeldung</strong>
                         <textarea aria-label={`Kommentar zu ${task.text}`} value={evidenceDraft.comment} onChange={(event) => updateEvidenceDraft(task.id, { comment: event.target.value })} maxLength={4000} rows={3} placeholder="Was wurde erledigt?" disabled={Boolean(savingReport)} style={{ display: 'block', boxSizing: 'border-box', width: '100%', padding: '10px', fontSize: '16px', margin: '6px 0 12px' }} />
                       </label>
-                      <label><strong>Fotos / Videos hinzufügen</strong>
-                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,image/bmp,image/tiff,video/*,.heic,.heif,.mov,.m4v" multiple aria-label={`Fotos und Videos für ${task.text}`} onChange={(event) => chooseEvidenceFiles(task.id, event)} disabled={Boolean(savingReport)} style={{ display: 'block', maxWidth: '100%', margin: '8px 0' }} />
-                      </label>
+                      <EvidencePickers taskName={task.text} disabled={Boolean(savingReport)} onSelect={(event) => chooseEvidenceFiles(task.id, event)} />
                       <p style={{ fontSize: '13px' }}>Bis zu 10 Dateien, je 100 MB. Kommentar und Belege werden mit „Fortschritt melden“ gespeichert – auch ohne Änderung des Prozentwerts. Dateien bleiben in diesem Browser.</p>
                       {evidenceDraft.files.length > 0 && <ul>{evidenceDraft.files.map((file, index) => <li key={index} style={{ overflowWrap: 'anywhere', marginBottom: '6px' }}>{file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB){' '}<button type="button" disabled={Boolean(savingReport)} aria-label={`Auswahl entfernen: ${file.name}`} onClick={() => updateEvidenceDraft(task.id, { files: evidenceDraft.files.filter((_, itemIndex) => itemIndex !== index) })}>Auswahl entfernen</button></li>)}</ul>}
                       <button onClick={() => reportTaskProgress(task)} disabled={!canReportProgress || Boolean(savingReport)} aria-label={`Fortschritt melden für ${task.text}`} style={{ minHeight: '44px' }}>{savingReport === evidenceKey ? 'Meldung wird gespeichert …' : 'Fortschritt melden'}</button>
