@@ -56,6 +56,24 @@ function mergeProjectPlan(plan, existing, projectId, importedAt) {
 }
 // End MS Project import helpers.
 
+// Visible outline rows; collapsed groups keep their task data untouched.
+function visibleProjectRows(tasks, expandedGroups = {}) {
+  const rows = []
+  const parents = []
+  for (const task of tasks) {
+    const level = task.removedFromPlan ? 1 : Math.max(1, Number(task.outlineLevel) || 1)
+    while (parents.length && parents[parents.length - 1].level >= level) parents.pop()
+    const parent = task.removedFromPlan ? null : parents[parents.length - 1] || null
+    const row = { task, level, parent, depth: parent ? parent.depth + 1 : 0, hasChildren: false }
+    row.expanded = Object.hasOwn(expandedGroups, task.id) ? expandedGroups[task.id] : row.depth === 0
+    row.visible = !parent || (parent.visible && parent.expanded)
+    if (parent) parent.hasChildren = true
+    rows.push(row)
+    if (task.isSummary && !task.removedFromPlan) parents.push(row)
+  }
+  return rows.filter((row) => row.visible)
+}
+
 function ProgressHistory({ task }) {
   const history = task.progressHistory || []
   if (!history.length) {
@@ -143,6 +161,7 @@ function App() {
 
   )
 
+  const [expandedGroups, setExpandedGroups] = useState({})
   const [progressDrafts, setProgressDrafts] = useState({})
   const [importPreview, setImportPreview] = useState(null)
   const [importTarget, setImportTarget] = useState('new')
@@ -574,6 +593,15 @@ function App() {
     } catch (error) {
       setImportError(error.name === 'QuotaExceededError' ? 'Nicht genügend Browserspeicher. Der Import wurde nicht gespeichert.' : error.message)
     }
+  }
+
+  const outlineRows = visibleProjectRows(selectedProject?.tasks || [], expandedGroups[selectedProjectId] || {})
+  const toggleGroup = (taskId, defaultExpanded) => {
+    setExpandedGroups((current) => {
+      const groups = current[selectedProjectId] || {}
+      const wasExpanded = Object.hasOwn(groups, taskId) ? groups[taskId] : defaultExpanded
+      return { ...current, [selectedProjectId]: { ...groups, [taskId]: !wasExpanded } }
+    })
   }
 
   const activeTasks = (selectedProject?.tasks || []).filter((task) => !task.isSummary && !task.removedFromPlan)
@@ -1128,10 +1156,20 @@ function App() {
 
           <h2>Arbeitsschritte</h2>
 
-          {selectedProject.tasks.map((task) => {
+          <p style={{ fontSize: '14px' }}>Tippe auf ein Level, um seine Untervorgänge auf- oder zuzuklappen.</p>
+          {outlineRows.map(({ task, depth, hasChildren, expanded }) => {
             if (task.isSummary || task.removedFromPlan) return (
-              <section key={task.id} style={{ margin: '12px 0', padding: '14px', background: '#f1f5f9', borderRadius: '8px', textAlign: 'left', borderLeft: '4px solid #64748b' }}>
-                <strong>{task.wbs ? `${task.wbs} · ` : ''}{task.text}</strong>
+              <section key={task.id} style={{ margin: '12px 0', marginLeft: `${Math.min(depth, 5) * 12}px`, padding: '14px', background: '#f1f5f9', borderRadius: '8px', textAlign: 'left', borderLeft: '4px solid #64748b' }}>
+                {hasChildren ? <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-label={`${task.text}, PSP ${task.wbs || task.msProjectUid || task.id}`}
+                  onClick={() => toggleGroup(task.id, depth === 0)}
+                  style={{ width: '100%', minHeight: '48px', display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left', padding: '8px', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                  <span>{task.wbs ? `${task.wbs} · ` : ''}{task.text}</span>
+                </button> : <strong>{task.wbs ? `${task.wbs} · ` : ''}{task.text}</strong>}
                 <p style={{ margin: '6px 0' }}>{task.removedFromPlan ? 'Nicht mehr im aktuellen Plan' : 'Sammelvorgang'} · {formatDate(task.planStart)} – {formatDate(task.planFinish)}</p>
                 {task.removedFromPlan && <ProgressHistory task={task} />}
               </section>
@@ -1158,6 +1196,8 @@ function App() {
                   padding: '14px',
 
                   marginBottom: '10px',
+
+                  marginLeft: `${Math.min(depth, 5) * 12}px`,
 
                   border: overdue
 
