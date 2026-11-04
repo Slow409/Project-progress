@@ -42,9 +42,9 @@ begin
       or (item ? 'parentUid' and item->>'parentUid' is not null
           and item->>'parentUid' !~ '^[1-9][0-9]{0,8}$')
       or (item ? 'start' and item->>'start' is not null
-          and item->>'start' !~ '^\\d{4}-\\d{2}-\\d{2}T')
+          and item->>'start' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T')
       or (item ? 'finish' and item->>'finish' is not null
-          and item->>'finish' !~ '^\\d{4}-\\d{2}-\\d{2}T')
+          and item->>'finish' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T')
   ) then
     raise exception 'Projektplan enthält ungültige Pflichtfelder.';
   end if;
