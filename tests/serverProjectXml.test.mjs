@@ -74,3 +74,26 @@ test('MS Project XML parser rejects skipped outline levels', async () => {
   const invalid = xml(task(1,'Summary',1,1) + task(2,'Level jump',3,0))
   await assert.rejects(parseServerProjectXml(makeFile(invalid)),/Eltern-Kind-Struktur/)
 })
+
+test('MS Project resource and assignment UIDs are imported independently of names', async () => {
+  const file = makeFile(`<?xml version="1.0"?><Project xmlns="${ns}">
+    <Tasks>${task(1,'Project',1,1)}${task(2,'Work',2)}</Tasks>
+    <Resources>
+      <Resource><UID>4</UID><Name>FlooingCompany</Name></Resource>
+      <Resource><UID>5</UID><Name>FlooringCompany</Name></Resource>
+    </Resources>
+    <Assignments><Assignment><TaskUID>2</TaskUID><ResourceUID>5</ResourceUID></Assignment></Assignments>
+  </Project>`)
+  const parsed = await parseServerProjectXml(file)
+  assert.equal(parsed.resources.length,2)
+  assert.deepEqual(parsed.resources.map(r => r.uid),['4','5'])
+  assert.deepEqual(parsed.assignments,[{taskUid:'2',resourceUid:'5'}])
+})
+
+test('Import rejects unknown or duplicate resource assignment identifiers', async () => {
+  const base = `<Tasks>${task(1,'Work',1)}</Tasks><Resources><Resource><UID>1</UID><Name>Supplier</Name></Resource></Resources>`
+  const bad = `<Assignments><Assignment><TaskUID>1</TaskUID><ResourceUID>999</ResourceUID></Assignment></Assignments>`
+  await assert.rejects(parseServerProjectXml(makeFile(`<Project xmlns="${ns}">${base}${bad}</Project>`)),/unbekannte UID/)
+  const duplicate = `<Assignments><Assignment><TaskUID>1</TaskUID><ResourceUID>1</ResourceUID></Assignment><Assignment><TaskUID>1</TaskUID><ResourceUID>1</ResourceUID></Assignment></Assignments>`
+  await assert.rejects(parseServerProjectXml(makeFile(`<Project xmlns="${ns}">${base}${duplicate}</Project>`)),/Doppelte Ressourcenzuordnung/)
+})
