@@ -41,7 +41,31 @@ export async function parseServerProjectXml(file) {
     return task
   })
   if (!tasks.length || tasks.length > 5000) throw new Error('Der Plan muss 1 bis 5000 Vorgänge enthalten.')
-  return { name:value(root,'Name') || value(root,'Title') || file.name, fileName:file.name, tasks }
+  const resourceUids = new Set()
+  const resources = children(element(root, 'Resources'), 'Resource')
+    .filter(node => value(node,'UID') !== '0' && value(node,'IsNull') !== '1' && value(node,'Name'))
+    .map(node => {
+      const uid = value(node,'UID')
+      if (!/^[1-9][0-9]{0,8}$/.test(uid) || resourceUids.has(uid))
+        throw new Error('Ungültige oder doppelte Ressourcen-UID.')
+      resourceUids.add(uid)
+      return { uid, name:value(node,'Name') }
+    })
+  const assignmentKeys = new Set()
+  const assignments = children(element(root, 'Assignments'), 'Assignment')
+    .filter(node => value(node,'TaskUID') !== '0' && value(node,'ResourceUID') !== '0')
+    .map(node => {
+      const taskUid = value(node,'TaskUID')
+      const resourceUid = value(node,'ResourceUID')
+      if (!seen.has(taskUid) || !resourceUids.has(resourceUid))
+        throw new Error('Ressourcenzuordnung verweist auf eine unbekannte UID.')
+      const key = taskUid + ':' + resourceUid
+      if (assignmentKeys.has(key)) throw new Error('Doppelte Ressourcenzuordnung.')
+      assignmentKeys.add(key)
+      return { taskUid, resourceUid }
+    })
+  return { name:value(root,'Name') || value(root,'Title') || file.name,
+    fileName:file.name, tasks, resources, assignments }
 }
 
 export function compareServerPlan(tasks, existing, timezone = 'Europe/Berlin') {
