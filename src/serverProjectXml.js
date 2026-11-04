@@ -29,12 +29,15 @@ export async function parseServerProjectXml(file) {
     if (!Number.isInteger(level) || level < 1 || level > 99) throw new Error('Ungültige Gliederungsebene.')
     while (hierarchy.length && hierarchy[hierarchy.length - 1].level >= level) hierarchy.pop()
     if (level > 1 && !hierarchy.length) throw new Error('Gliederung enthält einen Vorgang ohne übergeordnete Ebene.')
+    if (level > 1 && (hierarchy[hierarchy.length - 1].level !== level - 1 ||
+        !hierarchy[hierarchy.length - 1].summary))
+      throw new Error('Ungültige Eltern-Kind-Struktur: übergeordneter Vorgang muss ein Sammelvorgang sein.')
     const parentUid = hierarchy.length ? hierarchy[hierarchy.length - 1].uid : null
     const name = value(t,'Name') || 'Vorgang ' + uid
     const start = dateTime(value(t,'Start')), finish = dateTime(value(t,'Finish'))
     const task = {uid, name, level, parentUid, wbs:value(t,'WBS') || value(t,'OutlineNumber') || null,
       summary: value(t,'Summary') === '1', start, finish}
-    hierarchy.push({level,uid})
+    hierarchy.push({level,uid,summary:task.summary})
     return task
   })
   if (!tasks.length || tasks.length > 5000) throw new Error('Der Plan muss 1 bis 5000 Vorgänge enthalten.')
