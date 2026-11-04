@@ -17,8 +17,9 @@ declare
   v_parent integer;
   v_revision integer;
 begin
+  perform pg_advisory_xact_lock(hashtextextended(p_project_id::text, 0));
   if v_actor is null or not exists (
-    select 1 from public.projects where id = p_project_id and owner_user_id = v_actor for update
+    select 1 from public.projects where id = p_project_id and owner_user_id = v_actor
   ) then
     raise exception 'Nur Projektverantwortliche dürfen Pläne importieren.';
   end if;
