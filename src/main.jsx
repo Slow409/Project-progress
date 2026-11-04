@@ -7,11 +7,20 @@ import App from './App.jsx'
 // Missing Supabase configuration must never break the existing public demo.
 const ServerWorkspace = lazy(() => import('./ServerWorkspace.jsx'))
 const serverPreview = new URLSearchParams(window.location.search).get('mode') === 'server'
+const serverConfigured = Boolean(
+  import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+)
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     {serverPreview
-      ? <Suspense fallback={<p>Serveransicht wird geladen …</p>}><ServerWorkspace /></Suspense>
+      ? (serverConfigured
+        ? <Suspense fallback={<p>Serveransicht wird geladen …</p>}><ServerWorkspace /></Suspense>
+        : <main role="alert" style={{padding:24,maxWidth:720,margin:'0 auto'}}>
+            <h1>Serveransicht derzeit nicht verfügbar</h1>
+            <p>Die Supabase-Verbindung wurde für diese Bereitstellung noch nicht eingerichtet.
+            Es werden keine Daten lokal als Ersatz gespeichert. Bitte den Administrator kontaktieren.</p>
+          </main>)
       : <App />}
   </StrictMode>,
 )
