@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase.js'
 
 const BUCKET = 'task-media'
 const MAX_FILES = 10
-const MAX_SIZE = 100 * 1024 * 1024
+const MAX_SIZE = 50 * 1024 * 1024
 const extensions = new Set(['jpg','jpeg','png','webp','gif','heic','heif','avif','mp4','mov','m4v','webm'])
 const types = {
   jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp',
@@ -16,7 +16,7 @@ export function checkEvidence(files) {
   return files.map(file => {
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (!extensions.has(ext) || !file.size || file.size > MAX_SIZE) {
-      throw new Error('Ungültige oder zu große Datei: ' + file.name + ' (maximal 100 MB).')
+      throw new Error('Ungültige oder zu große Datei: ' + file.name + ' (maximal 50 MB).')
     }
     if (file.type && file.type !== types[ext]) {
       // Do not trust file names that contradict a declared MIME type.
