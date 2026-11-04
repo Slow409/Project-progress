@@ -26,7 +26,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Install isolated XML parser for regression tests
-        run: npm install --no-save --package-lock=false linkedom@0.18.12
+        run: npm install --no-save --package-lock=false @xmldom/xmldom@0.9.8
       - name: Run import unit tests
         run: node --test tests/*.test.mjs
       - name: Build application
