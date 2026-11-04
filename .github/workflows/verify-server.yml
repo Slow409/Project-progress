@@ -1,0 +1,35 @@
+name: Verify server workspace
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - '.github/workflows/verify-server.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install isolated XML parser for regression tests
+        run: npm install --no-save --package-lock=false @xmldom/xmldom@0.9.8
+      - name: Run import unit tests
+        run: node --test tests/*.test.mjs
+      - name: Check JavaScript code quality
+        run: npm run lint
+      - name: Build application
+        run: npm run build
