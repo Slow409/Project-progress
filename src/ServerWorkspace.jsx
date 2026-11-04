@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase.js'
+import { checkEvidence, uploadEvidence, EvidencePicker, EvidenceList } from './MediaEvidence.jsx'
 import './ServerWorkspace.css'
 
 // Separate opt-in preview. The published legacy demo is unchanged.
@@ -21,6 +22,7 @@ export default function ServerWorkspace() {
   const [percent, setPercent] = useState(0)
   const [comment, setComment] = useState('')
   const [reportResource, setReportResource] = useState('')
+  const [evidenceFiles, setEvidenceFiles] = useState([])
 
   const userId = session?.user?.id
   const selectedProject = projects.find(p => p.id === projectId)
@@ -103,15 +105,28 @@ export default function ServerWorkspace() {
       setError('Keine Schreibberechtigung für diese Ressource.')
       return
     }
+    try { checkEvidence(evidenceFiles) } catch (validationError) { setError(validationError.message); return }
     setBusy(true); setError(''); setNotice('')
-    const { error: e } = await supabase.from('progress_updates').insert({
+    const { data: saved, error: e } = await supabase.from('progress_updates').insert({
       project_id: projectId, task_id: task.id, resource_id: resource.id,
       author_user_id: userId, percent_complete: Number(percent),
       comment: comment.trim() || null, client_created_at: new Date().toISOString(),
-    })
+    }).select('id').single()
     if (e) setError(e.message)
     else {
-      try { await refreshReports(); setNotice('Fortschritt und Kommentar auf dem Server gespeichert.'); setComment(''); setOpenTask('') }
+      let upload = { uploaded: 0, failed: [] }
+      if (evidenceFiles.length) {
+        try {
+          upload = await uploadEvidence({ files: evidenceFiles, projectId, taskId: task.id,
+            updateId: saved.id, resourceId: resource.id, userId })
+        } catch (uploadError) { upload.failed.push(uploadError.message) }
+      }
+      try {
+        await refreshReports()
+        setNotice('Fortschritt und Kommentar auf dem Server gespeichert. ' + upload.uploaded + ' Datei(en) hochgeladen.')
+        setEvidenceFiles([]); setComment(''); setOpenTask('')
+        if (upload.failed.length) setError('Nicht alle Belege konnten gespeichert werden: ' + upload.failed.join(' | '))
+      }
       catch (refreshError) { setError('Meldung gespeichert, aber Liste konnte nicht aktualisiert werden: ' + refreshError.message) }
     }
     setBusy(false)
@@ -165,7 +180,7 @@ export default function ServerWorkspace() {
               const candidates = assigned(task.id).filter(r => owner || (r.auth_user_id === userId && r.access_enabled))
               setReportResource(candidates[0]?.id || '')
               setPercent(Number(reports.find(r => r.task_id === task.id)?.percent_complete || 0))
-              setComment('')
+              setComment(''); setEvidenceFiles([])
             }}>Fortschritt melden</button>}
             {openTask === task.id && <form className="server-report" onSubmit={submitReport}>
               <label>Ressource<select required value={reportResource} onChange={e => setReportResource(e.target.value)}>
@@ -174,9 +189,13 @@ export default function ServerWorkspace() {
               </select></label>
               <label>Fortschritt in % <input type="number" min="0" max="100" step="1" required value={percent} onChange={e => setPercent(e.target.value)} /></label>
               <label>Kommentar<textarea value={comment} onChange={e => setComment(e.target.value)} rows="3" maxLength="10000" /></label>
+              <EvidencePicker files={evidenceFiles} disabled={busy} onChange={files => { setEvidenceFiles(files); setError('') }} />
               <button disabled={busy || !reportResource}>Auf Server speichern</button>
             </form>}
-            {reports.filter(r => r.task_id === task.id).slice(0, 3).map(r => <p className="server-history" key={r.id}>{new Date(r.created_at).toLocaleString('de-DE')} · {r.percent_complete} % {r.comment ? '· ' + r.comment : ''}</p>)}
+            {reports.filter(r => r.task_id === task.id).slice(0, 3).map(r => <div className="server-history" key={r.id}>
+              <p>{new Date(r.created_at).toLocaleString('de-DE')} · {r.percent_complete} % {r.comment ? '· ' + r.comment : ''}</p>
+              <EvidenceList updateId={r.id} />
+            </div>)}
           </div>)}
         </section>
         {owner && <section className="server-panel"><h2>Ressourcen und Zugriffsrechte</h2>
