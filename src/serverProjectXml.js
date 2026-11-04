@@ -1,8 +1,8 @@
 // Microsoft Project XML (MSPDI) -> server plan, no local persistence.
 const NS = 'http://schemas.microsoft.com/project'
 const MAX_XML_BYTES = 8 * 1024 * 1024
-const element = (parent, name) => Array.from(parent?.children || []).find(n => n.localName === name)
-const children = (parent, name) => Array.from(parent?.children || []).filter(n => n.localName === name)
+const element = (parent, name) => Array.from(parent?.childNodes || []).find(n => n.nodeType === 1 && n.localName === name)
+const children = (parent, name) => Array.from(parent?.childNodes || []).filter(n => n.nodeType === 1 && n.localName === name)
 const value = (parent, name) => element(parent, name)?.textContent?.trim() || ''
 const dateTime = text => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(text) ? text : null
 
