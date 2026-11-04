@@ -52,7 +52,7 @@ export default function ServerWorkspace() {
       return
     }
     let active = true
-    supabase.from('projects').select('id,name,owner_user_id').order('created_at', { ascending: false })
+    supabase.from('projects') .select('id,name,owner_user_id,timezone').order('created_at', { ascending: false })
       .then(({ data, error: e }) => {
         if (!active) return
         if (e) setError(e.message)
@@ -93,26 +93,35 @@ export default function ServerWorkspace() {
         .eq('project_id', projectId).limit(10000)
       if (e) throw e
       if (data.length >= 10000) throw new Error('Zu viele Vorgänge für eine zuverlässige Vorschau.')
-      setImportPreview({ ...parsed, diff:compareServerPlan(parsed.tasks,data) })
+      setImportPreview({ ...parsed, diff:compareServerPlan(parsed.tasks,data,selectedProject?.timezone || 'Europe/Berlin') })
     } catch (e) { setError('Importvorschau fehlgeschlagen: ' + e.message) }
   }
 
   async function applyImport() {
     if (!owner || !importPreview || !importConfirm || importBusy) return
     setImportBusy(true); setError(''); setNotice('')
-    const result = await supabase.rpc('apply_project_xml_plan', {
+    const result = await supabase.rpc('apply_project_xml_plan_with_resources', {
       p_project_id: projectId, p_file_name: importPreview.fileName, p_plan: importPreview.tasks,
+      p_resources: importPreview.resources, p_assignments: importPreview.assignments,
     })
     if (result.error) setError('Plan wurde nicht übernommen: ' + result.error.message)
     else {
       setNotice('Plan serverseitig aktualisiert: ' + result.data.added + ' neu, ' +
-        result.data.changed + ' geändert, ' + result.data.inactive + ' inaktiv. Historie bleibt erhalten.')
+        result.data.changed + ' geändert, ' + result.data.inactive + ' inaktiv. ' +
+        result.data.resourcesAdded + ' Ressourcen neu, ' + result.data.assignmentsAdded +
+        ' Zuordnungen neu, ' + result.data.assignmentsRemoved + ' entfernt. Historie bleibt erhalten.')
       setImportPreview(null); setImportConfirm(false)
       const { data, error: reloadError } = await supabase.from('tasks')
         .select('id,project_id,name,wbs,outline_level,parent_task_uid,project_task_uid,is_summary,plan_start,plan_finish,active')
         .eq('project_id', projectId).eq('active',true).order('project_task_uid')
       if (reloadError) setError('Plan übernommen, Neuladen fehlgeschlagen: ' + reloadError.message)
       else setTasks(data || [])
+      const [reloadedResources, reloadedLinks] = await Promise.all([
+        supabase.from('resources').select('id,project_id,name,email,auth_user_id,access_enabled').eq('project_id',projectId).order('name'),
+        supabase.from('task_resources').select('task_id,resource_id'),
+      ])
+      if (reloadedResources.error || reloadedLinks.error) setError('Ressourcenzuordnungen konnten nicht aktualisiert werden.')
+      else { setResources(reloadedResources.data || []); setLinks(reloadedLinks.data || []) }
     }
     setImportBusy(false)
   }
@@ -274,7 +283,8 @@ export default function ServerWorkspace() {
           {importPreview && <div>
             <h3>Vorschau: {importPreview.name}</h3>
             <p>{importPreview.tasks.length} Vorgänge · {importPreview.diff.added} neu · {importPreview.diff.changed} geändert · {importPreview.diff.unchanged} unverändert · {importPreview.diff.inactive} werden inaktiv.</p>
-            <p>Wichtig: Die Serverdaten werden erst beim Bestätigen aktualisiert. Historische Meldungen werden nicht gelöscht. Ressourcenzuordnungen sind nicht Bestandteil dieses Imports.</p>
+            <p>{importPreview.resources.length} Ressourcen · {importPreview.assignments.length} Vorgangszuordnungen in der XML-Datei.</p>
+            <p>Wichtig: Erst beim Bestätigen werden Vorgänge, Ressourcen und Zuordnungen zusammen aktualisiert. Bestehende Benutzerkonten, Ressourcenzugänge und historische Meldungen werden nicht überschrieben.</p>
             <label><input type="checkbox" checked={importConfirm} onChange={e => setImportConfirm(e.target.checked)}/> Vorschau geprüft und Aktualisierung freigegeben</label>
             <button type="button" disabled={!importConfirm || importBusy} onClick={applyImport}>Projektplan auf Server aktualisieren</button>
           </div>}
