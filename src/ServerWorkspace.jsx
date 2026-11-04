@@ -20,6 +20,7 @@ export default function ServerWorkspace() {
   const [links, setLinks] = useState([])
   const [reports, setReports] = useState([])
   const [openTask, setOpenTask] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState({})
   const [percent, setPercent] = useState(0)
   const [comment, setComment] = useState('')
   const [reportResource, setReportResource] = useState('')
@@ -188,6 +189,29 @@ export default function ServerWorkspace() {
   const assigned = taskId => links.filter(link => link.task_id === taskId).map(link => resources.find(r => r.id === link.resource_id)).filter(Boolean)
   const canReport = task => owner || assigned(task.id).some(r => r.auth_user_id === userId && r.access_enabled)
   const displayDate = value => value ? new Date(value).toLocaleDateString('de-DE') : '–'
+  const childrenByParent = new Map()
+  const visibleIds = new Set(tasks.map(task => task.project_task_uid))
+  for (const task of tasks) {
+    const parentId = visibleIds.has(task.parent_task_uid) ? task.parent_task_uid : null
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, [])
+    childrenByParent.get(parentId).push(task)
+  }
+  const byWbs = (a,b) => (a.wbs || String(a.project_task_uid)).localeCompare(
+    b.wbs || String(b.project_task_uid), 'de', { numeric: true })
+  for (const siblings of childrenByParent.values()) siblings.sort(byWbs)
+  const visibleTasks = [], visited = new Set()
+  function visit(task, level = 1) {
+    if (visited.has(task.id)) return
+    visited.add(task.id)
+    const children = childrenByParent.get(task.project_task_uid) || []
+    visibleTasks.push({ ...task, displayLevel: level, hasChildren: children.length > 0 })
+    // First two levels are initially visible; deeper levels appear on demand.
+    const expanded = expandedGroups[task.id] ?? (level === 1)
+    if (expanded) for (const child of children) visit(child, level + 1)
+  }
+  for (const root of childrenByParent.get(null) || []) visit(root)
+  // Safeguard for malformed or incomplete parent references.
+  for (const task of tasks) if (!visited.has(task.id)) visit(task)
 
   return <main className="server-workspace">
     <header><h1>Projektfortschritt · Serveransicht</h1><p>Geschützte Vorschau · Projektdaten werden nur vom Server geladen und dorthin geschrieben.</p></header>
@@ -209,9 +233,15 @@ export default function ServerWorkspace() {
         <p>Rolle: <strong>{owner ? 'Projektverantwortlicher' : 'Zugewiesene Ressource'}</strong>. Die Datenbank entscheidet über jede Lese- und Schreibberechtigung.</p>
         <section className="server-panel"><h2>Vorgänge</h2>
           {!tasks.length && <p>Keine für dieses Konto sichtbaren Vorgänge vorhanden.</p>}
-          {tasks.map(task => <div className="server-task" key={task.id}>
-            <div className="server-task-title" style={{ paddingLeft: Math.min(3, Math.max(0, (task.outline_level || 1) - 1)) * 12 }}>
-              <strong>{task.wbs ? task.wbs + ' · ' : ''}{task.name}</strong>
+          {visibleTasks.map(task => <div className="server-task" key={task.id}>
+            <div className="server-task-title" style={{ paddingLeft: Math.min(4, Math.max(0, task.displayLevel - 1)) * 12 }}>
+              <strong>{task.hasChildren && <button type="button"
+                aria-expanded={expandedGroups[task.id] ?? (task.displayLevel === 1)}
+                aria-label={task.name + ' ' + ((expandedGroups[task.id] ?? (task.displayLevel === 1)) ? 'zuklappen' : 'aufklappen')}
+                onClick={() => setExpandedGroups(current => ({
+                  ...current, [task.id]: !(current[task.id] ?? (task.displayLevel === 1)),
+                }))}>{(expandedGroups[task.id] ?? (task.displayLevel === 1)) ? '▾' : '▸'}</button>}
+                {task.wbs ? task.wbs + ' · ' : ''}{task.name}</strong>
               <small>{displayDate(task.plan_start)} – {displayDate(task.plan_finish)}</small>
             </div>
             <div className="server-task-meta">Ressourcen: {assigned(task.id).map(r => r.name).join(', ') || 'Keine'} · Meldungen: {reports.filter(r => r.task_id === task.id).length}</div>
