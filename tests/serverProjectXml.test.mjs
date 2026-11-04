@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DOMParser } from 'linkedom'
+import { DOMParser } from '@xmldom/xmldom'
 import { parseServerProjectXml, compareServerPlan } from '../src/serverProjectXml.js'
 
 globalThis.DOMParser = DOMParser
