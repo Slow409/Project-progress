@@ -11,7 +11,7 @@ const task = (uid, name, level, summary = 0) =>
 const makeFile = xml => ({
   name: 'project.xml', size: Buffer.byteLength(xml), text: async () => xml,
 })
-const xml = tasks => `<?xml version="1.0"?><Project xmlns="${ns}"><Name>Project1.xml</Name><Title>Projekt1</Title><Tasks><Task><UID>0</UID><Name>Root</Name></Task>${tasks}</Tasks></Project>`
+const xml = tasks => `<?xml version="1.0"?><Project xmlns="${ns}"><Name>Project1.xml</Name><Title>Projekt1</Title><Tasks><Task><UID>0</UID><Name>Root</Name></Task>${tasks}</Tasks><Resources></Resources><Assignments></Assignments></Project>`
 
 test('MS Project XML parser keeps UID and parent hierarchy', async () => {
   const result = await parseServerProjectXml(makeFile(xml(
