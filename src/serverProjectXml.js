@@ -41,6 +41,8 @@ export async function parseServerProjectXml(file) {
     return task
   })
   if (!tasks.length || tasks.length > 5000) throw new Error('Der Plan muss 1 bis 5000 Vorgänge enthalten.')
+  if (!element(root, 'Resources') || !element(root, 'Assignments'))
+    throw new Error('Die XML-Datei enthält keine vollständigen Ressourcen- und Zuordnungslisten. Import abgebrochen, um bestehende Berechtigungen zu schützen.')
   const resourceUids = new Set()
   const resources = children(element(root, 'Resources'), 'Resource')
     .filter(node => value(node,'UID') !== '0' && value(node,'IsNull') !== '1' && value(node,'Name'))
