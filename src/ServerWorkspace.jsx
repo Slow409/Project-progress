@@ -211,7 +211,7 @@ export default function ServerWorkspace() {
   }
   for (const root of childrenByParent.get(null) || []) visit(root)
   // Safeguard for malformed or incomplete parent references.
-  for (const task of tasks) if (!visited.has(task.id)) visit(task)
+  // Collapsed descendants are deliberately excluded from the rendered list.
 
   return <main className="server-workspace">
     <header><h1>Projektfortschritt · Serveransicht</h1><p>Geschützte Vorschau · Projektdaten werden nur vom Server geladen und dorthin geschrieben.</p></header>
