@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase.js'
 import { checkEvidence, uploadEvidence, EvidencePicker, EvidenceList } from './MediaEvidence.jsx'
+import { parseServerProjectXml, compareServerPlan } from './serverProjectXml.js'
 import './ServerWorkspace.css'
 
 // Separate opt-in preview. The published legacy demo is unchanged.
@@ -23,6 +24,9 @@ export default function ServerWorkspace() {
   const [comment, setComment] = useState('')
   const [reportResource, setReportResource] = useState('')
   const [evidenceFiles, setEvidenceFiles] = useState([])
+  const [importPreview, setImportPreview] = useState(null)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importConfirm, setImportConfirm] = useState(false)
 
   const userId = session?.user?.id
   const selectedProject = projects.find(p => p.id === projectId)
@@ -75,6 +79,42 @@ export default function ServerWorkspace() {
     })
     return () => { active = false }
   }, [userId, projectId])
+
+  async function previewImport(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    setImportPreview(null); setImportConfirm(false); setError(''); setNotice('')
+    if (!file) return
+    try {
+      const parsed = await parseServerProjectXml(file)
+      const { data, error: e } = await supabase.from('tasks')
+        .select('project_task_uid,name,wbs,outline_level,parent_task_uid,is_summary,plan_start,plan_finish,active')
+        .eq('project_id', projectId).limit(10000)
+      if (e) throw e
+      if (data.length >= 10000) throw new Error('Zu viele Vorgänge für eine zuverlässige Vorschau.')
+      setImportPreview({ ...parsed, diff:compareServerPlan(parsed.tasks,data) })
+    } catch (e) { setError('Importvorschau fehlgeschlagen: ' + e.message) }
+  }
+
+  async function applyImport() {
+    if (!owner || !importPreview || !importConfirm || importBusy) return
+    setImportBusy(true); setError(''); setNotice('')
+    const result = await supabase.rpc('apply_project_xml_plan', {
+      p_project_id: projectId, p_file_name: importPreview.fileName, p_plan: importPreview.tasks,
+    })
+    if (result.error) setError('Plan wurde nicht übernommen: ' + result.error.message)
+    else {
+      setNotice('Plan serverseitig aktualisiert: ' + result.data.added + ' neu, ' +
+        result.data.changed + ' geändert, ' + result.data.inactive + ' inaktiv. Historie bleibt erhalten.')
+      setImportPreview(null); setImportConfirm(false)
+      const { data, error: reloadError } = await supabase.from('tasks')
+        .select('id,project_id,name,wbs,outline_level,parent_task_uid,project_task_uid,is_summary,plan_start,plan_finish,active')
+        .eq('project_id', projectId).eq('active',true).order('project_task_uid')
+      if (reloadError) setError('Plan übernommen, Neuladen fehlgeschlagen: ' + reloadError.message)
+      else setTasks(data || [])
+    }
+    setImportBusy(false)
+  }
 
   async function login(event) {
     event.preventDefault()
@@ -198,6 +238,17 @@ export default function ServerWorkspace() {
             </div>)}
           </div>)}
         </section>
+        {owner && <section className="server-panel"><h2>MS-Project-Plan importieren</h2>
+          <p>Neue Vorgänge werden anhand der MS-Project-UID angelegt, bekannte Vorgänge aktualisiert und entfernte Vorgänge nur inaktiv markiert. Fortschrittsberichte und Belege bleiben erhalten.</p>
+          <label>MS-Project-XML auswählen<input type="file" accept=".xml,application/xml,text/xml" disabled={importBusy} onChange={previewImport}/></label>
+          {importPreview && <div>
+            <h3>Vorschau: {importPreview.name}</h3>
+            <p>{importPreview.tasks.length} Vorgänge · {importPreview.diff.added} neu · {importPreview.diff.changed} geändert · {importPreview.diff.unchanged} unverändert · {importPreview.diff.inactive} werden inaktiv.</p>
+            <p>Wichtig: Die Serverdaten werden erst beim Bestätigen aktualisiert. Historische Meldungen werden nicht gelöscht. Ressourcenzuordnungen sind nicht Bestandteil dieses Imports.</p>
+            <label><input type="checkbox" checked={importConfirm} onChange={e => setImportConfirm(e.target.checked)}/> Vorschau geprüft und Aktualisierung freigegeben</label>
+            <button type="button" disabled={!importConfirm || importBusy} onClick={applyImport}>Projektplan auf Server aktualisieren</button>
+          </div>}
+        </section>}
         {owner && <section className="server-panel"><h2>Ressourcen und Zugriffsrechte</h2>
           {resources.map(r => <div className="server-resource" key={r.id}>
             <span><strong>{r.name}</strong> · {r.email || 'Keine E-Mail'} · {r.auth_user_id ? (r.access_enabled ? 'Zugriff aktiv' : 'Zugriff gesperrt') : 'Noch keinem Benutzer zugeordnet'}</span>
