@@ -25,5 +25,9 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Install isolated XML parser for regression tests
+        run: npm install --no-save --package-lock=false linkedom@0.18.12
+      - name: Run import unit tests
+        run: node --test tests/*.test.mjs
       - name: Build application
         run: npm run build
