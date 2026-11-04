@@ -41,7 +41,17 @@ export async function parseServerProjectXml(file) {
   return { name:value(root,'Name') || value(root,'Title') || file.name, fileName:file.name, tasks }
 }
 
-export function compareServerPlan(tasks, existing) {
+export function compareServerPlan(tasks, existing, timezone = 'Europe/Berlin') {
+  const localTime = value => {
+    if (!value) return ''
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone, year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23',
+    }).formatToParts(new Date(value))
+    const part = type => parts.find(p => p.type === type)?.value || ''
+    return part('year') + '-' + part('month') + '-' + part('day') +
+      'T' + part('hour') + ':' + part('minute') + ':' + part('second')
+  }
   const current = new Map(existing.map(t => [String(t.project_task_uid),t]))
   const ids = new Set(tasks.map(t => t.uid))
   let added=0,changed=0,unchanged=0,inactive=0
@@ -51,8 +61,8 @@ export function compareServerPlan(tasks, existing) {
     const iso = d => d?.slice(0,19) || ''
     const changedFields = old.name !== t.name || (old.wbs || '') !== (t.wbs || '') ||
       Number(old.outline_level || 1) !== t.level || String(old.parent_task_uid || '') !== String(t.parentUid || '') ||
-      Boolean(old.is_summary) !== t.summary || iso(old.plan_start) !== iso(t.start) ||
-      iso(old.plan_finish) !== iso(t.finish) || !old.active
+      Boolean(old.is_summary) !== t.summary || localTime(old.plan_start) !== iso(t.start) ||
+      localTime(old.plan_finish) !== iso(t.finish) || !old.active
     if (changedFields) changed++; else unchanged++
   }
   inactive = existing.filter(t => t.active && !ids.has(String(t.project_task_uid))).length
