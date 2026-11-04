@@ -64,3 +64,13 @@ test('plan preview compares UTC database timestamps against Berlin MS Project wa
   assert.deepEqual(compareServerPlan(plan,existing,'Europe/Berlin'),
     {added:0,changed:0,unchanged:1,inactive:0})
 })
+
+test('MS Project XML parser rejects non-summary parents', async () => {
+  const invalid = xml(task(1,'Not summary',1,0) + task(2,'Child',2,0))
+  await assert.rejects(parseServerProjectXml(makeFile(invalid)),/Eltern-Kind-Struktur/)
+})
+
+test('MS Project XML parser rejects skipped outline levels', async () => {
+  const invalid = xml(task(1,'Summary',1,1) + task(2,'Level jump',3,0))
+  await assert.rejects(parseServerProjectXml(makeFile(invalid)),/Eltern-Kind-Struktur/)
+})
