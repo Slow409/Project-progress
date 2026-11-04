@@ -97,3 +97,8 @@ test('Import rejects unknown or duplicate resource assignment identifiers', asyn
   const duplicate = `<Assignments><Assignment><TaskUID>1</TaskUID><ResourceUID>1</ResourceUID></Assignment><Assignment><TaskUID>1</TaskUID><ResourceUID>1</ResourceUID></Assignment></Assignments>`
   await assert.rejects(parseServerProjectXml(makeFile(`<Project xmlns="${ns}">${base}${duplicate}</Project>`)),/Doppelte Ressourcenzuordnung/)
 })
+
+test('XML missing resource sections is rejected before any import', async () => {
+  const incomplete = `<Project xmlns="${ns}"><Tasks>${task(1,'Work',1)}</Tasks></Project>`
+  await assert.rejects(parseServerProjectXml(makeFile(incomplete)),/vollständigen Ressourcen/)
+})
