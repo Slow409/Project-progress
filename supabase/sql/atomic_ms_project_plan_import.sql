@@ -56,6 +56,26 @@ begin
   ) then
     raise exception 'Vorgangs-UIDs müssen eindeutig sein.';
   end if;
+  -- Every nested task must have a present, summary-type parent exactly one level above.
+  if exists (
+    select 1 from jsonb_array_elements(p_plan) child
+    where (child->>'parentUid') is not null
+      and not exists (
+        select 1 from jsonb_array_elements(p_plan) parent
+        where parent->>'uid' = child->>'parentUid'
+          and (parent->>'level')::integer = (child->>'level')::integer - 1
+          and coalesce((parent->>'summary')::boolean,false)
+      )
+  ) then
+    raise exception 'Ungültige Eltern-Kind-Struktur im Projektplan.';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_plan) item
+    where ((item->>'level')::integer = 1 and (item->>'parentUid') is not null)
+       or ((item->>'level')::integer > 1 and (item->>'parentUid') is null)
+  ) then
+    raise exception 'Ungültige oberste Gliederungsebene.';
+  end if;
   insert into public.plan_imports(project_id,imported_by,file_name,status,source_project_name,summary)
   values(p_project_id,v_actor,p_file_name,'preview',null,jsonb_build_object('taskCount',v_count))
   returning id into v_import_id;
