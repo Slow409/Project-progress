@@ -41,9 +41,11 @@ export async function uploadEvidence({ files, projectId, taskId, updateId, resou
       media_type: mediaType, captured_at: new Date().toISOString(),
     })
     if (metadataError) {
-      // The uploaded object is private but orphaned: no DELETE policy is available.
-      // Never claim it was persisted as an attached report.
-      results.failed.push(file.name + ': Zuordnung fehlgeschlagen (' + metadataError.message + '). Speicherbereinigung durch Administrator erforderlich.')
+      // Only our own unreferenced object may be deleted, guarded by storage RLS.
+      const { data: removed, error: cleanupError } = await supabase.storage.from(BUCKET).remove([path])
+      const removedOk = !cleanupError && (removed || []).some(item => item.name === path || path.endsWith('/' + item.name))
+      results.failed.push(file.name + ': Zuordnung fehlgeschlagen (' + metadataError.message + '). ' +
+        (removedOk ? 'Upload bereinigt.' : 'Upload konnte nicht nachweislich bereinigt werden; Administrator benachrichtigen.'))
     } else results.uploaded += 1
   }
   return results
