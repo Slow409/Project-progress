@@ -8,6 +8,7 @@ declare
   v_actor uuid := auth.uid();
   v_import_id uuid;
   v_count integer;
+  v_timezone text;
   v_added integer := 0;
   v_changed integer := 0;
   v_retired integer := 0;
@@ -23,6 +24,7 @@ begin
   ) then
     raise exception 'Nur Projektverantwortliche dürfen Pläne importieren.';
   end if;
+  select timezone into v_timezone from public.projects where id=p_project_id;
   if jsonb_typeof(p_plan) <> 'array' then
     raise exception 'Der Projektplan muss eine Liste von Vorgängen enthalten.';
   end if;
@@ -69,7 +71,8 @@ begin
     values (
       p_project_id,(v_t.item->>'uid')::integer,nullif(v_t.item->>'wbs',''),v_t.item->>'name',
       v_parent,(v_t.item->>'level')::integer,coalesce((v_t.item->>'summary')::boolean,false),
-      nullif(v_t.item->>'start','')::timestamptz,nullif(v_t.item->>'finish','')::timestamptz,
+      (nullif(v_t.item->>'start','')::timestamp at time zone v_timezone),
+      (nullif(v_t.item->>'finish','')::timestamp at time zone v_timezone),
       true,v_import_id,v_import_id
     )
     on conflict(project_id,project_task_uid) do update set
