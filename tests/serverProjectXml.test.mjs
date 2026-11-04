@@ -55,3 +55,12 @@ test('plan preview classifies added, modified, unchanged, and inactive without m
   assert.deepEqual(compareServerPlan(incoming,old),{added:1,changed:1,unchanged:1,inactive:1})
   assert.equal(old[1].name,'Old')
 })
+
+test('plan preview compares UTC database timestamps against Berlin MS Project wall clock', () => {
+  const existing=[{project_task_uid:1,name:'Project',wbs:'1',outline_level:1,parent_task_uid:null,
+    is_summary:true,plan_start:'2026-10-27T07:00:00+00:00',plan_finish:'2026-10-27T16:00:00+00:00',active:true}]
+  const plan=[{uid:'1',name:'Project',wbs:'1',level:1,parentUid:null,summary:true,
+    start:'2026-10-27T08:00:00',finish:'2026-10-27T17:00:00'}]
+  assert.deepEqual(compareServerPlan(plan,existing,'Europe/Berlin'),
+    {added:0,changed:0,unchanged:1,inactive:0})
+})
