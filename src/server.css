@@ -30,3 +30,5 @@
 .dashboard td:last-child > div { display: inline-block; margin-right: 12px; }
 
 .dashboard th { white-space: nowrap; }
+
+.resource > button { margin: 6px 8px 0 0; }
