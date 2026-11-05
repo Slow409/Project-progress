@@ -1,0 +1,11 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #243247; background: #f3f6f5; }
+* { box-sizing: border-box; } body { margin: 0; } #root { width: 1160px; max-width: 100%; margin: auto; text-align: left; min-height: 100vh; }
+.server-app { padding: 28px; } .server-app header, .actions, .project-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.server-app h1 { font-size: clamp(26px, 5vw, 40px); margin: 4px 0 18px; } .server-app h2 { font-size: 24px; } .server-app h3 { font-size: 19px; margin: 0 0 12px; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; color: #16685c; font-size: 13px; } .intro { margin: 0 0 28px; }
+.server-app button { font: inherit; cursor: pointer; border: 1px solid #16685c; background: #16685c; color: white; border-radius: 7px; padding: 10px 16px; min-height: 44px; }
+.server-app button:disabled { opacity: .55; cursor: wait; } .server-app input, .server-app select, .server-app textarea { display: block; width: 100%; padding: 10px; font: inherit; border: 1px solid #9aaea8; border-radius: 6px; background: white; color: #243247; }
+.server-app label { display: block; margin: 12px 0; } .server-app summary { cursor: pointer; padding: 12px 0; font-weight: 600; } .server-app p { margin: 10px 0; } .server-app fieldset { border: 0; margin: 0; padding: 0; }
+.login, .panel, .task { background: white; padding: 22px; border: 1px solid #d8e3de; border-radius: 10px; margin: 20px 0; } .login { max-width: 520px; } .resource-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(250px,1fr)); gap: 16px; } .resource { border: 1px solid #d8e3de; border-radius: 8px; padding: 16px; } .resource span { display: block; font-size: 14px; margin-top: 8px; }
+.project-bar { margin-top: 20px; } .project-bar label { flex: 1; min-width: 200px; } .report { max-width: 660px; margin: 16px 0; } .history { border-top: 1px solid #d8e3de; padding: 18px 0; } .comment { white-space: pre-wrap; overflow-wrap: anywhere; } .error { color: #8d2020; background: #ffecec; padding: 15px; border-radius: 8px; } .evidence { max-width: 100%; max-height: 380px; display: block; margin: 12px 0; } .server-app :focus-visible { outline: 3px solid #f2af33; outline-offset: 3px; }
+@media(max-width:600px) { .server-app { padding: 14px; } .task,.panel { padding: 14px; } }
