@@ -18,11 +18,15 @@
 .dashboard td.comment { min-width: 220px; max-width: 360px; }
 .server-app .photo-link { background: transparent; color: #16685c; border: 0; padding: 6px 0; text-decoration: underline; text-align: left; }
 
-.schedule-signal { min-width: 190px; max-width: 340px; margin: 12px 0; padding: 12px; border: 1px solid #d8e3de; border-radius: 8px; background: #fafcfb; }
-.schedule-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.schedule-dot { flex: 0 0 16px; height: 16px; border-radius: 50%; border: 1px solid #52645a; }
-.schedule-signal small { display: block; margin-top: 6px; line-height: 1.4; color: #4d5b69; }
-.schedule-scale { height: 9px; margin: 12px 3px 8px; border-radius: 6px; background: linear-gradient(to right, #21aa21, #e0bf16, #d52e27); position: relative; }
-.schedule-scale span { position: absolute; top: -4px; width: 4px; height: 17px; transform: translateX(-50%); background: #243247; border: 1px solid white; border-radius: 2px; }
+.schedule-signal { display: flex; align-items: center; gap: 8px; white-space: nowrap; width: max-content; max-width: 100%; overflow-x: auto; padding: 6px 0; margin: 6px 0; font-size: 13px; }
+.schedule-dot { flex: 0 0 14px; height: 14px; border-radius: 50%; border: 1px solid #52645a; }
+.schedule-scale { display: inline-block; flex: 0 0 65px; height: 7px; margin: 0 4px; border-radius: 6px; background: linear-gradient(to right, #21aa21, #e0bf16, #d52e27); position: relative; }
+.schedule-scale span { position: absolute; top: -3px; width: 4px; height: 13px; transform: translateX(-50%); background: #243247; border: 1px solid white; border-radius: 2px; }
 .schedule-help { margin: 10px 0 18px; font-size: 14px; }
 .dashboard td .schedule-signal { margin: 0; }
+
+.dashboard td { white-space: nowrap; }
+.dashboard td.comment { white-space: nowrap; max-width: none; }
+.dashboard td:last-child > div { display: inline-block; margin-right: 12px; }
+
+.dashboard th { white-space: nowrap; }
