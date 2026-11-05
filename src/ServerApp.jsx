@@ -38,10 +38,43 @@ function PlanImport({ project, reload }) {
   return <details className="panel"><summary>MS-Project-Plan aktualisieren</summary><p>Wähle den XML-Plan für „{project.name}“. Fehlende Vorgänge werden als inaktiv markiert; Meldungen bleiben erhalten.</p><input type="file" accept=".xml" disabled={busy} onChange={preview} aria-label="MS-Project-XML auswählen" />{plan && <div><p><strong>{plan.name}</strong>: {plan.tasks.length} Vorgänge, {plan.resources.length} Ressourcen, {plan.assignments.length} Zuordnungen.</p><p>Prüfe, dass die Datei zum ausgewählten Projekt gehört.</p><ul>{plan.tasks.slice(0,12).map(t => <li key={t.msProjectUid}>{t.wbs} {t.text} · {t.planStart} – {t.planFinish}</li>)}</ul><button disabled={busy} onClick={apply}>Plan für dieses Projekt übernehmen</button> <button disabled={busy} onClick={() => setPlan(null)}>Abbrechen</button></div>}{message && <p role="status">{message}</p>}</details>
 }
 
-function ResourceEditor({ resource, project, reload }) {
+export function ResourceEditor({ resource, project, reload }) {
   const [email, setEmail] = useState(resource.email || '')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [cooldown, setCooldown] = useState(0)
+  useEffect(() => {
+    if (!cooldown) return
+    const timer = setTimeout(() => setCooldown(value => Math.max(0, value - 1)), 1000)
+    return () => clearTimeout(timer)
+  }, [cooldown])
+  async function sendLogin() {
+    setBusy(true); setMessage('')
+    try {
+      const result = await supabase.functions.invoke('invite-resource', { body: { action: 'send_login', project_id: project.id, resource_id: resource.id } })
+      if (result.error || result.data?.error) {
+        let code = result.data?.error
+        if (!code && result.error?.context?.clone) {
+          try { code = (await result.error.context.clone().json()).error } catch { /* use fallback below */ }
+        }
+        const messages = {
+          email_rate_limit: 'Bitte mindestens eine Minute warten, bevor du einen weiteren Anmeldelink sendest.',
+          resource_access_disabled: 'Der Ressourcenzugriff ist gesperrt. Bitte zuerst freigeben.',
+          resource_not_linked: 'Bitte zuerst einen Benutzer mit der Ressource verbinden.',
+          account_unavailable: 'Das zugeordnete Benutzerkonto ist nicht verfügbar. Bitte die Zuordnung prüfen.',
+          account_disabled: 'Das Benutzerkonto ist gesperrt.',
+          owner_required: 'Nur der Projektmanager darf Anmeldelinks senden.',
+          unauthorized: 'Deine Anmeldung ist abgelaufen. Bitte erneut anmelden.',
+          login_link_failed: 'Der E-Mail-Versand ist fehlgeschlagen. Bitte später erneut versuchen.',
+        }
+        if (code === 'email_rate_limit') setCooldown(60)
+        throw new Error(messages[code] || 'Der Anmeldelink konnte nicht gesendet werden. Bitte Verbindung und Anmeldung prüfen.')
+      }
+      setCooldown(60)
+      setMessage('Neuer Anmeldelink versendet. Bitte den neuesten Link im Postfach verwenden. Vorhandene Meldungen bleiben erhalten.')
+    } catch (error) { setMessage(error.message) }
+    finally { setBusy(false) }
+  }
   async function save(invite) {
     setBusy(true); setMessage('')
     try {
@@ -64,6 +97,8 @@ function ResourceEditor({ resource, project, reload }) {
     <label>E-Mail für {resource.name}<input type="email" value={email} disabled={busy || Boolean(resource.auth_user_id)} onChange={e => setEmail(e.target.value)} /></label>
     {!resource.auth_user_id && <button disabled={busy || !email.includes('@')} onClick={() => save(true)}>Benutzer verbinden / einladen</button>}
     {resource.auth_user_id && <button disabled={busy} onClick={() => save(false)}>{resource.access_enabled ? 'Zugriff sperren' : 'Zugriff freigeben'}</button>}
+    {resource.auth_user_id && <button type="button" disabled={busy || !resource.access_enabled || cooldown > 0} onClick={sendLogin}>{cooldown ? `Erneut senden in ${cooldown} s` : 'Neuen Anmeldelink senden'}</button>}
+    {resource.auth_user_id && !resource.access_enabled && <p>Zum Senden eines Anmeldelinks zuerst den Zugriff freigeben.</p>}
     {message && <p role="status">{message}</p>}
   </article>
 }
@@ -251,6 +286,13 @@ export default function ServerApp() {
   useEffect(() => {
     if (!supabase) { setReady(true); return }
     let active = true
+    const callback = new URLSearchParams(location.hash.replace(/^#/, ''))
+    const callbackError = callback.get('error_code') || callback.get('error')
+    if (callbackError) {
+      setError(callbackError === 'otp_expired' || callbackError === 'access_denied'
+        ? 'Dieser Anmeldelink ist abgelaufen oder wurde bereits verwendet. Bitte einen neuen Anmeldelink anfordern und nur die neueste E-Mail öffnen.'
+        : 'Die Anmeldung über den E-Mail-Link ist fehlgeschlagen. Bitte einen neuen Anmeldelink anfordern.')
+    }
     function updateSession(value) {
       if (!active) return
       if (currentUser.current !== (value?.user.id || null)) {
@@ -290,7 +332,7 @@ export default function ServerApp() {
     setData({ tasks, resources, links, reports, media })
   }
   useEffect(() => {
-    setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setExpanded({}); setError('')
+    setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setExpanded({}); if (session && projectId) setError('')
     reload().catch(e => setError(e.message))
     return () => { generation.current++ }
   }, [projectId, session?.user.id])
@@ -298,7 +340,7 @@ export default function ServerApp() {
   async function signIn(e) {
     e.preventDefault(); setBusy(true); setError(''); setMessage('')
     try {
-      checked(await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}${import.meta.env.BASE_URL}` } }))
+      checked(await supabase.auth.signInWithOtp({ email: email.trim().toLowerCase(), options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}${import.meta.env.BASE_URL}` } }))
       setMessage('Bitte öffne den neuen Anmeldelink aus deinem E-Mail-Postfach.')
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
