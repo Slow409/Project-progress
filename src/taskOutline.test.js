@@ -12,6 +12,21 @@ const tasks = [
   { id: 'steel2', project_task_uid: 14, parent_task_uid: 6 },
 ]
 const ids = expanded => taskOutline(tasks, expanded).map(row => row.task.id)
+test('WBS determines sibling order even when General has a later UID', () => {
+  const input = [
+    { id: 'project', project_task_uid: 1, wbs: '1' },
+    { id: 'level2', project_task_uid: 6, parent_task_uid: 1, wbs: '1.3' },
+    { id: 'level10', project_task_uid: 10, parent_task_uid: 1, wbs: '1.10' },
+    { id: 'general', project_task_uid: 30, parent_task_uid: 1, wbs: '1.1' },
+    { id: 'child10', project_task_uid: 31, parent_task_uid: 30, wbs: '1.1.10' },
+    { id: 'child2', project_task_uid: 32, parent_task_uid: 30, wbs: '1.1.2' },
+    { id: 'level1', project_task_uid: 5, parent_task_uid: 1, wbs: '1.2' },
+  ]
+  const original = [...input]
+  assert.deepEqual(taskOutline(input, { general: true }).map(r => r.task.id),
+    ['project', 'general', 'child2', 'child10', 'level1', 'level2', 'level10'])
+  assert.deepEqual(input, original)
+})
 test('initial view contains project and its immediate levels', () => {
   assert.deepEqual(ids({}), ['project','level1','level2','level3'])
 })
