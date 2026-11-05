@@ -55,7 +55,7 @@ export function scheduleStatus(task, report, now = new Date()) {
   const usedReserve = (forecastDuration - reserveStart) / reserveDays
   const hue = Math.max(0, Math.min(120, 120 * (1 - usedReserve)))
   const state = forecastDuration <= reserveStart ? 'green' : forecastDuration <= duration ? 'yellow' : 'red'
-  const label = state === 'green' ? 'Im Plan · Reserve gesichert' : state === 'yellow' ? 'Reserve wird benötigt' : 'Termin gefährdet'
+  const label = state === 'green' ? 'Im Plan · Buffer gesichert' : state === 'yellow' ? 'Buffer wird benötigt' : 'Termin gefährdet'
   return {
     ...base, state, label, hue,
     forecastDate: Number.isFinite(forecastDuration)
