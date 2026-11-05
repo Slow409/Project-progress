@@ -164,7 +164,7 @@ export function ScheduleSignal({ task, report, now }) {
   return <div className={`schedule-signal schedule-${status.state}`}>
     <div className="schedule-label"><span className="schedule-dot" aria-hidden="true" style={{ backgroundColor: status.hue == null ? '#7a858e' : `hsl(${status.hue} 75% 38%)` }} /><strong>{status.label}</strong></div>
     {status.hue != null && <div className="schedule-scale" role="img" aria-label={status.label}><span style={{ left: `${Math.max(2, Math.min(98, (120 - status.hue) / 120 * 100))}%` }} /></div>}
-    {status.reserveDays != null && <small>Reserve: {number(status.reserveDays)} {status.reserveDays === 1 ? 'Kalendertag' : 'Kalendertage'} (10 %)</small>}
+    {status.reserveDays != null && <small>Buffer: {number(status.reserveDays)} {status.reserveDays === 1 ? 'Kalendertag' : 'Kalendertage'} (10 %)</small>}
     {status.forecastDate && <small>Rechnerisches Ende: {date(status.forecastDate)}</small>}
     {report && <small>Meldestand: {new Date(report.created_at).toLocaleString('de-DE')}</small>}
   </div>
@@ -190,7 +190,7 @@ function ProgressDashboard({ data, now }) {
   return <section className="panel dashboard" aria-labelledby="dashboard-title">
     <h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2>
     <p>{reports.length} Einträge · Neueste zuerst · Uhrzeit: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
-    <details className="schedule-help"><summary>So funktioniert die Terminampel</summary><p>Grün: rechnerisches Ende vor der 10-%-Reserve. Gelb: Reserve wird benötigt. Rot: Planende voraussichtlich überschritten. Der Farbverlauf zeigt den zunehmenden Verbrauch der Reserve.</p><p>Die aktuelle Prognose vergleicht den zuletzt bestätigten Fortschritt mit der seit Planstart verstrichenen Zeit und nimmt einen gleichmäßigen Verlauf an. Alte Meldungen können die Prognose verschlechtern; nicht gemeldeter Fortschritt wird nicht vorausgesetzt. Grundlage sind Kalendertage einschließlich des Endtags, ohne Arbeitskalender und Abhängigkeiten. Grau bedeutet: keine belastbare Einzelvorgangsprognose.</p><p>Die Ampel in jeder Zeile zeigt den aktuellen Stand des Vorgangs, auch bei älteren Listeneinträgen.</p></details>
+    <details className="schedule-help"><summary>So funktioniert die Terminampel</summary><p>Grün: rechnerisches Ende vor dem 10-%-Buffer. Gelb: Buffer wird benötigt. Rot: Planende voraussichtlich überschritten. Der Farbverlauf zeigt den zunehmenden Verbrauch des Buffers.</p><p>Die aktuelle Prognose vergleicht den zuletzt bestätigten Fortschritt mit der seit Planstart verstrichenen Zeit und nimmt einen gleichmäßigen Verlauf an. Alte Meldungen können die Prognose verschlechtern; nicht gemeldeter Fortschritt wird nicht vorausgesetzt. Grundlage sind Kalendertage einschließlich des Endtags, ohne Arbeitskalender und Abhängigkeiten. Grau bedeutet: keine belastbare Einzelvorgangsprognose.</p><p>Die Ampel in jeder Zeile zeigt den aktuellen Stand des Vorgangs, auch bei älteren Listeneinträgen.</p></details>
     {!reports.length ? <p>Noch keine Fortschrittsmeldungen vorhanden.</p> : <div className="dashboard-scroll" tabIndex="0" role="region" aria-label="Liste der Fortschrittsmeldungen"><table>
       <thead><tr><th>Datum / Uhrzeit</th><th>Ort / Projektbereich</th><th>Vorgang</th><th>Fortschrittsgrad</th><th>Terminampel aktuell</th><th>Kommentar</th><th>Ressource</th><th>Fotos</th></tr></thead>
       <tbody>{reports.map(report => {
