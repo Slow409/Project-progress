@@ -55,11 +55,54 @@ export function scheduleStatus(task, report, now = new Date()) {
   const usedReserve = (forecastDuration - reserveStart) / reserveDays
   const hue = Math.max(0, Math.min(120, 120 * (1 - usedReserve)))
   const state = forecastDuration <= reserveStart ? 'green' : forecastDuration <= duration ? 'yellow' : 'red'
-  const label = state === 'green' ? 'Im Plan · Buffer gesichert' : state === 'yellow' ? 'Buffer wird benötigt' : 'Termin gefährdet'
+  const label = state === 'green' ? 'Im Zeitplan' : state === 'yellow' ? 'Termin knapp' : 'Termin gefährdet'
   return {
     ...base, state, label, hue,
     forecastDate: Number.isFinite(forecastDuration)
       ? new Date((start + forecastDuration) * DAY - 1).toISOString().slice(0, 10) : null,
     reserveRemaining: Number.isFinite(forecastDuration) ? duration - forecastDuration : null,
   }
+}
+
+// Roll up the most critical active descendant without counting summaries twice.
+export function scheduleStatuses(tasks, reports, now = new Date()) {
+  const latest = new Map()
+  for (const report of reports) latest.set(report.task_id, latestReport([latest.get(report.task_id), report].filter(Boolean)))
+  const byUid = new Map(tasks.map(task => [task.project_task_uid, task]))
+  const children = new Map()
+  for (const task of tasks) {
+    const parent = byUid.get(task.parent_task_uid)
+    if (parent && parent.id !== task.id && task.active !== false) {
+      if (!children.has(parent.id)) children.set(parent.id, [])
+      children.get(parent.id).push(task)
+    }
+  }
+  const result = new Map()
+  const visiting = new Set()
+  function visit(task) {
+    if (result.has(task.id)) return result.get(task.id)
+    if (visiting.has(task.id)) return neutral('Gliederung prüfen')
+    visiting.add(task.id)
+    const nested = children.get(task.id) || []
+    let status
+    if (!nested.length || task.active === false) status = scheduleStatus(task, latest.get(task.id), now)
+    else {
+      const states = nested.map(visit)
+      const critical = states.find(s => s.state === 'red')
+        || states.filter(s => s.state === 'yellow').sort((a, b) => a.hue - b.hue)[0]
+        || states.find(s => s.state === 'unknown')
+        || states.find(s => s.state === 'green') || states[0]
+      const allComplete = states.every(s => s.state === 'complete')
+      const dates = states.map(s => s.forecastDate).filter(Boolean).sort()
+      status = { ...critical, label: allComplete ? 'Abgeschlossen' : critical.label,
+        state: allComplete ? 'complete' : critical.state,
+        forecastDate: states.some(s => s.state === 'unknown' || (s.state === 'red' && !s.forecastDate)) ? null : dates.at(-1),
+        childCount: nested.length }
+    }
+    visiting.delete(task.id)
+    result.set(task.id, status)
+    return status
+  }
+  tasks.forEach(visit)
+  return result
 }

@@ -51,3 +51,36 @@ test('latest report uses timestamp with deterministic ID tie break, not array or
   assert.equal(latestReport(reports).id, 'c')
   assert.equal(latestReport([]), null)
 })
+
+test('every hierarchy level inherits the most critical active descendant', async () => {
+  const { scheduleStatuses } = await import('./scheduleStatus.js')
+  const tasks = [
+    { ...task, id: 'project', project_task_uid: 1, is_summary: true },
+    { ...task, id: 'level', project_task_uid: 2, parent_task_uid: 1, is_summary: true },
+    { ...task, id: 'leaf', project_task_uid: 3, parent_task_uid: 2 },
+    { ...task, id: 'inactive', project_task_uid: 4, parent_task_uid: 1, active: false },
+  ]
+  for (const [percent, expected] of [[40, 'red'], [52, 'yellow'], [60, 'green'], [100, 'complete']]) {
+    const result = scheduleStatuses(tasks, [{ ...report(percent), id: 'r', task_id: 'leaf' }], now)
+    for (const id of ['leaf', 'level', 'project']) assert.equal(result.get(id).state, expected)
+  }
+  assert.equal(scheduleStatuses(tasks, [], now).get('project').state, 'unknown')
+})
+test('unassessed branches prevent a misleading green parent; red remains visible', async () => {
+  const { scheduleStatuses } = await import('./scheduleStatus.js')
+  const tasks = [
+    { ...task, id: 'p', project_task_uid: 1, is_summary: true },
+    { ...task, id: 'a', project_task_uid: 2, parent_task_uid: 1 },
+    { ...task, id: 'b', project_task_uid: 3, parent_task_uid: 1 },
+  ]
+  assert.equal(scheduleStatuses(tasks, [{ ...report(60), task_id: 'a' }], now).get('p').state, 'unknown')
+  assert.equal(scheduleStatuses(tasks, [{ ...report(40), task_id: 'a' }], now).get('p').state, 'red')
+  assert.equal(scheduleStatuses(tasks, [{ ...report(52), task_id: 'a' }], now).get('p').state, 'yellow')
+})
+test('cyclic structures cannot recurse forever', async () => {
+  const { scheduleStatuses } = await import('./scheduleStatus.js')
+  const tasks = [{ ...task, id: 'a', project_task_uid: 1, parent_task_uid: 2 }, { ...task, id: 'b', project_task_uid: 2, parent_task_uid: 1 }]
+  const result = scheduleStatuses(tasks, [], now)
+  assert.equal(result.get('a').state, 'unknown')
+  assert.equal(result.get('b').state, 'unknown')
+})
