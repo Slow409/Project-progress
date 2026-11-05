@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './server.css'
 import { parseProjectXml } from './planImport'
+import { taskOutline } from './taskOutline'
 
 const date = value => value ? new Date(value).toLocaleDateString('de-DE') : '–'
 const checked = result => { if (result.error) throw result.error; return result.data || [] }
@@ -208,17 +209,7 @@ export default function ServerApp() {
       setMessage('Bitte öffne den neuen Anmeldelink aus deinem E-Mail-Postfach.')
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
-  const tasksByUid = new Map(data.tasks.map(t => [t.project_task_uid, t]))
-  function visible(task) {
-    let parent = tasksByUid.get(task.parent_task_uid)
-    const seen = new Set()
-    while (parent && !seen.has(parent.id)) {
-      seen.add(parent.id)
-      if (!(expanded[parent.id] ?? parent.parent_task_uid === null)) return false
-      parent = tasksByUid.get(parent.parent_task_uid)
-    }
-    return true
-  }
+  const rows = taskOutline(data.tasks, expanded)
   return <main className="server-app">
     <header><div><p className="eyebrow">Mathias Alt</p><h1>Projektfortschritt</h1></div>{session && <button onClick={async () => { const { error } = await supabase.auth.signOut({ scope: 'local' }); if (error) setError(error.message) }}>Abmelden</button>}</header>
     <p className="intro">Projekte, Fortschritte und Belege werden zentral auf dem Server gespeichert.</p>
@@ -231,11 +222,11 @@ export default function ServerApp() {
         {owner && <PlanImport key={projectId} project={project} reload={reload} />}
         <section><h2>{owner ? 'Projektaufgaben' : 'Meine Aufgaben'}</h2>
           {!data.tasks.length && <p>Keine zugewiesenen Aufgaben vorhanden.</p>}
-          {data.tasks.filter(visible).map(task => {
+          {rows.map(({ task, depth, hasChildren, open }) => {
             const reports = data.reports.filter(r => r.task_id === task.id)
             const latest = reports.at(-1)
-            return <article className="task" key={task.id} style={{ marginLeft: `${Math.min((task.outline_level || 1) - 1, 3) * 12}px` }}>
-              <h3>{task.is_summary && <button aria-label={`${task.name} auf- oder zuklappen`} aria-expanded={expanded[task.id] ?? task.parent_task_uid === null} onClick={() => setExpanded({ ...expanded, [task.id]: !(expanded[task.id] ?? task.parent_task_uid === null) })}>{(expanded[task.id] ?? task.parent_task_uid === null) ? '−' : '+'}</button>} {task.wbs} {task.name} {!task.active && '(nicht mehr im Plan)'}</h3>
+            return <article className="task" key={task.id} style={{ marginLeft: `${Math.min(depth, 3) * 12}px` }}>
+              <h3>{hasChildren ? <button className="outline-toggle" aria-label={`${task.name} ${open ? 'zuklappen' : 'aufklappen'}`} aria-expanded={open} onClick={() => setExpanded(previous => ({ ...previous, [task.id]: !(previous[task.id] ?? depth === 0) }))}><span aria-hidden="true">{open ? '−' : '+'}</span> {task.wbs} {task.name}</button> : <>{task.wbs} {task.name}</>} {!task.active && '(nicht mehr im Plan)'}</h3>
               <p>{date(task.plan_start)} – {date(task.plan_finish)} · {latest ? `${latest.percent_complete} % gemeldet` : 'Noch keine Fortschrittsmeldung'}</p>
               <p>{data.resources.filter(r => data.links.some(l => l.task_id === task.id && l.resource_id === r.id)).map(r => r.name).join(', ')}</p>
               <details><summary>Fortschritt und Belege</summary><Report key={task.id} task={task} resources={data.resources} links={data.links} user={session.user} owner={owner} reload={reload} />
