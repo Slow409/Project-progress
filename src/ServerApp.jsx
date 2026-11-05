@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import './server.css'
 import { parseProjectXml } from './planImport'
 import { taskOutline } from './taskOutline'
+import { scheduleStatus, latestReport } from './scheduleStatus'
 
 const date = value => value ? new Date(value).toLocaleDateString('de-DE') : '–'
 const checked = result => { if (result.error) throw result.error; return result.data || [] }
@@ -157,10 +158,24 @@ function PhotoLink({ item, index }) {
   return <div><button className="photo-link" disabled={busy} onClick={open}>{busy ? 'Wird geöffnet …' : `Foto ${index + 1} öffnen`}</button>{error && <p role="alert">{error}</p>}</div>
 }
 
-function ProgressDashboard({ data }) {
+export function ScheduleSignal({ task, report, now }) {
+  const status = scheduleStatus(task, report, now)
+  const number = value => value.toLocaleString('de-DE', { maximumFractionDigits: 1 })
+  return <div className={`schedule-signal schedule-${status.state}`}>
+    <div className="schedule-label"><span className="schedule-dot" aria-hidden="true" style={{ backgroundColor: status.hue == null ? '#7a858e' : `hsl(${status.hue} 75% 38%)` }} /><strong>{status.label}</strong></div>
+    {status.hue != null && <div className="schedule-scale" role="img" aria-label={status.label}><span style={{ left: `${Math.max(2, Math.min(98, (120 - status.hue) / 120 * 100))}%` }} /></div>}
+    {status.reserveDays != null && <small>Reserve: {number(status.reserveDays)} {status.reserveDays === 1 ? 'Kalendertag' : 'Kalendertage'} (10 %)</small>}
+    {status.forecastDate && <small>Rechnerisches Ende: {date(status.forecastDate)}</small>}
+    {report && <small>Meldestand: {new Date(report.created_at).toLocaleString('de-DE')}</small>}
+  </div>
+}
+
+function ProgressDashboard({ data, now }) {
   const tasks = new Map(data.tasks.map(t => [t.id, t]))
   const byUid = new Map(data.tasks.map(t => [t.project_task_uid, t]))
   const resources = new Map(data.resources.map(r => [r.id, r]))
+  const latestByTask = new Map()
+  for (const report of data.reports) latestByTask.set(report.task_id, latestReport([latestByTask.get(report.task_id), report].filter(Boolean)))
   const reports = [...data.reports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || String(b.id).localeCompare(String(a.id)))
   function place(task) {
     const parts = []
@@ -175,15 +190,16 @@ function ProgressDashboard({ data }) {
   return <section className="panel dashboard" aria-labelledby="dashboard-title">
     <h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2>
     <p>{reports.length} Einträge · Neueste zuerst · Uhrzeit: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+    <details className="schedule-help"><summary>So funktioniert die Terminampel</summary><p>Grün: rechnerisches Ende vor der 10-%-Reserve. Gelb: Reserve wird benötigt. Rot: Planende voraussichtlich überschritten. Der Farbverlauf zeigt den zunehmenden Verbrauch der Reserve.</p><p>Die aktuelle Prognose vergleicht den zuletzt bestätigten Fortschritt mit der seit Planstart verstrichenen Zeit und nimmt einen gleichmäßigen Verlauf an. Alte Meldungen können die Prognose verschlechtern; nicht gemeldeter Fortschritt wird nicht vorausgesetzt. Grundlage sind Kalendertage einschließlich des Endtags, ohne Arbeitskalender und Abhängigkeiten. Grau bedeutet: keine belastbare Einzelvorgangsprognose.</p><p>Die Ampel in jeder Zeile zeigt den aktuellen Stand des Vorgangs, auch bei älteren Listeneinträgen.</p></details>
     {!reports.length ? <p>Noch keine Fortschrittsmeldungen vorhanden.</p> : <div className="dashboard-scroll" tabIndex="0" role="region" aria-label="Liste der Fortschrittsmeldungen"><table>
-      <thead><tr><th>Datum / Uhrzeit</th><th>Ort / Projektbereich</th><th>Vorgang</th><th>Fortschrittsgrad</th><th>Kommentar</th><th>Ressource</th><th>Fotos</th></tr></thead>
+      <thead><tr><th>Datum / Uhrzeit</th><th>Ort / Projektbereich</th><th>Vorgang</th><th>Fortschrittsgrad</th><th>Terminampel aktuell</th><th>Kommentar</th><th>Ressource</th><th>Fotos</th></tr></thead>
       <tbody>{reports.map(report => {
         const task = tasks.get(report.task_id)
         const photos = data.media.filter(m => m.progress_update_id === report.id && m.media_type === 'photo')
         return <tr key={report.id}>
           <td><time dateTime={report.created_at}>{new Date(report.created_at).toLocaleString('de-DE')}</time></td>
           <td>{place(task)}</td><td>{task ? `${task.wbs || ''} ${task.name}`.trim() : 'Vorgang nicht verfügbar'}</td>
-          <td>{report.percent_complete} %</td><td className="comment">{report.comment || '–'}</td>
+          <td>{report.percent_complete} %</td><td><ScheduleSignal task={task} report={latestByTask.get(report.task_id)} now={now} /></td><td className="comment">{report.comment || '–'}</td>
           <td>{resources.get(report.resource_id)?.name || 'Nicht verfügbar'}</td>
           <td>{photos.length ? photos.map((item, index) => <PhotoLink key={item.id} item={item} index={index} />) : 'Kein Foto'}</td>
         </tr>
@@ -204,6 +220,11 @@ async function allProjectRows(table, projectId) {
 }
 
 export default function ServerApp() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000)
+    return () => clearInterval(timer)
+  }, [])
   const [session, setSession] = useState(null)
   const [ready, setReady] = useState(false)
   const [email, setEmail] = useState('')
@@ -284,15 +305,16 @@ export default function ServerApp() {
         <div className="project-bar"><label>Projekt<select value={projectId} onChange={e => setProjectId(e.target.value)}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button onClick={() => reload().catch(e => setError(e.message))}>Aktualisieren</button><span>{owner ? 'Projektmanager' : 'Ressource'}</span></div>
         {owner && <details className="panel"><summary>Benutzer und Ressourcen verwalten</summary><p>Die Zuordnung gilt nur für dieses Projekt. Ressourcenbenutzer sehen ausschließlich ihre freigegebenen Aufgaben.</p><div className="resource-grid">{data.resources.map(r => <ResourceEditor key={`${projectId}:${r.id}:${r.auth_user_id}`} resource={r} project={project} reload={reload} />)}</div></details>}
         {owner && <PlanImport key={projectId} project={project} reload={reload} />}
-        <ProgressDashboard key={projectId} data={data} />
+        <ProgressDashboard key={projectId} data={data} now={now} />
         <section><h2>{owner ? 'Projektaufgaben' : 'Meine Aufgaben'}</h2>
           {!data.tasks.length && <p>Keine zugewiesenen Aufgaben vorhanden.</p>}
           {rows.map(({ task, depth, hasChildren, open }) => {
             const reports = data.reports.filter(r => r.task_id === task.id)
-            const latest = reports.at(-1)
+            const latest = latestReport(reports)
             return <article className="task" key={task.id} style={{ marginLeft: `${Math.min(depth, 3) * 12}px` }}>
               <h3>{hasChildren ? <button className="outline-toggle" aria-label={`${task.name} ${open ? 'zuklappen' : 'aufklappen'}`} aria-expanded={open} onClick={() => setExpanded(previous => ({ ...previous, [task.id]: !(previous[task.id] ?? depth === 0) }))}><span aria-hidden="true">{open ? '−' : '+'}</span> {task.wbs} {task.name}</button> : <>{task.wbs} {task.name}</>} {!task.active && '(nicht mehr im Plan)'}</h3>
               <p>{date(task.plan_start)} – {date(task.plan_finish)} · {latest ? `${latest.percent_complete} % gemeldet` : 'Noch keine Fortschrittsmeldung'}</p>
+              <ScheduleSignal task={task} report={latest} now={now} />
               <p>{data.resources.filter(r => data.links.some(l => l.task_id === task.id && l.resource_id === r.id)).map(r => r.name).join(', ')}</p>
               <details><summary>Fortschritt und Belege</summary><Report key={task.id} task={task} resources={data.resources} links={data.links} user={session.user} owner={owner} reload={reload} />
                 {reports.map(r => <div className="history" key={r.id}><strong>{r.percent_complete} %</strong> · {new Date(r.created_at).toLocaleString('de-DE')} · {data.resources.find(x => x.id === r.resource_id)?.name}<p className="comment">{r.comment}</p>{data.media.filter(m => m.progress_update_id === r.id).map(m => <Attachment key={m.id} item={m} />)}</div>)}
