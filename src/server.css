@@ -17,3 +17,12 @@
 .dashboard th { background: #edf5f2; color: #164d43; }
 .dashboard td.comment { min-width: 220px; max-width: 360px; }
 .server-app .photo-link { background: transparent; color: #16685c; border: 0; padding: 6px 0; text-decoration: underline; text-align: left; }
+
+.schedule-signal { min-width: 190px; max-width: 340px; margin: 12px 0; padding: 12px; border: 1px solid #d8e3de; border-radius: 8px; background: #fafcfb; }
+.schedule-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.schedule-dot { flex: 0 0 16px; height: 16px; border-radius: 50%; border: 1px solid #52645a; }
+.schedule-signal small { display: block; margin-top: 6px; line-height: 1.4; color: #4d5b69; }
+.schedule-scale { height: 9px; margin: 12px 3px 8px; border-radius: 6px; background: linear-gradient(to right, #21aa21, #e0bf16, #d52e27); position: relative; }
+.schedule-scale span { position: absolute; top: -4px; width: 4px; height: 17px; transform: translateX(-50%); background: #243247; border: 1px solid white; border-radius: 2px; }
+.schedule-help { margin: 10px 0 18px; font-size: 14px; }
+.dashboard td .schedule-signal { margin: 0; }
