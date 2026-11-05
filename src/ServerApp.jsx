@@ -140,6 +140,69 @@ function Attachment({ item }) {
   return <div>{!url ? <button onClick={open}>{item.media_type === 'photo' ? 'Foto anzeigen' : 'Video anzeigen'}</button> : item.media_type === 'photo' ? <img className="evidence" src={url} alt="Fotobeleg zur Fortschrittsmeldung" /> : <video className="evidence" src={url} controls playsInline />}{error && <p role="alert">{error}</p>}</div>
 }
 
+function PhotoLink({ item, index }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function open() {
+    setBusy(true); setError('')
+    const tab = window.open('about:blank', '_blank')
+    if (tab) tab.opener = null
+    try {
+      const data = checked(await supabase.storage.from('task-media').createSignedUrl(item.storage_path, 300))
+      if (tab) tab.location.replace(data.signedUrl)
+      else window.location.assign(data.signedUrl)
+    } catch (e) { tab?.close(); setError(e.message) }
+    finally { setBusy(false) }
+  }
+  return <div><button className="photo-link" disabled={busy} onClick={open}>{busy ? 'Wird geöffnet …' : `Foto ${index + 1} öffnen`}</button>{error && <p role="alert">{error}</p>}</div>
+}
+
+function ProgressDashboard({ data }) {
+  const tasks = new Map(data.tasks.map(t => [t.id, t]))
+  const byUid = new Map(data.tasks.map(t => [t.project_task_uid, t]))
+  const resources = new Map(data.resources.map(r => [r.id, r]))
+  const reports = [...data.reports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || String(b.id).localeCompare(String(a.id)))
+  function place(task) {
+    const parts = []
+    const seen = new Set(task ? [task.id] : [])
+    let parent = byUid.get(task?.parent_task_uid)
+    while (parent && !seen.has(parent.id)) {
+      seen.add(parent.id); parts.unshift(parent.name)
+      parent = byUid.get(parent.parent_task_uid)
+    }
+    return parts.join(' → ') || 'Nicht hinterlegt'
+  }
+  return <section className="panel dashboard" aria-labelledby="dashboard-title">
+    <h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2>
+    <p>{reports.length} Einträge · Neueste zuerst · Uhrzeit: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+    {!reports.length ? <p>Noch keine Fortschrittsmeldungen vorhanden.</p> : <div className="dashboard-scroll" tabIndex="0" role="region" aria-label="Liste der Fortschrittsmeldungen"><table>
+      <thead><tr><th>Datum / Uhrzeit</th><th>Ort / Projektbereich</th><th>Vorgang</th><th>Fortschrittsgrad</th><th>Kommentar</th><th>Ressource</th><th>Fotos</th></tr></thead>
+      <tbody>{reports.map(report => {
+        const task = tasks.get(report.task_id)
+        const photos = data.media.filter(m => m.progress_update_id === report.id && m.media_type === 'photo')
+        return <tr key={report.id}>
+          <td><time dateTime={report.created_at}>{new Date(report.created_at).toLocaleString('de-DE')}</time></td>
+          <td>{place(task)}</td><td>{task ? `${task.wbs || ''} ${task.name}`.trim() : 'Vorgang nicht verfügbar'}</td>
+          <td>{report.percent_complete} %</td><td className="comment">{report.comment || '–'}</td>
+          <td>{resources.get(report.resource_id)?.name || 'Nicht verfügbar'}</td>
+          <td>{photos.length ? photos.map((item, index) => <PhotoLink key={item.id} item={item} index={index} />) : 'Kein Foto'}</td>
+        </tr>
+      })}</tbody>
+    </table></div>}
+  </section>
+}
+
+// Fetch every permitted report, including projects with more than one API page.
+async function allProjectRows(table, projectId) {
+  const rows = []
+  const size = 500
+  for (let start = 0; ; start += size) {
+    const page = checked(await supabase.from(table).select('*').eq('project_id', projectId).order('created_at').order('id').range(start, start + size - 1))
+    rows.push(...page)
+    if (page.length < size) return rows
+  }
+}
+
 export default function ServerApp() {
   const [session, setSession] = useState(null)
   const [ready, setReady] = useState(false)
@@ -189,11 +252,12 @@ export default function ServerApp() {
       supabase.from('tasks').select('*').eq('project_id', projectId).order('project_task_uid'),
       supabase.from('resources').select('*').eq('project_id', projectId).order('project_resource_uid'),
       supabase.from('task_resources').select('task_id,resource_id'),
-      supabase.from('progress_updates').select('*').eq('project_id', projectId).order('created_at'),
-      supabase.from('media').select('*').eq('project_id', projectId).order('created_at'),
+      allProjectRows('progress_updates', projectId),
+      allProjectRows('media', projectId),
     ])
     if (current !== generation.current) return
-    const [tasks, resources, links, reports, media] = results.map(checked)
+    const [tasks, resources, links] = results.slice(0, 3).map(checked)
+    const [reports, media] = results.slice(3)
     setData({ tasks, resources, links, reports, media })
   }
   useEffect(() => {
@@ -220,6 +284,7 @@ export default function ServerApp() {
         <div className="project-bar"><label>Projekt<select value={projectId} onChange={e => setProjectId(e.target.value)}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button onClick={() => reload().catch(e => setError(e.message))}>Aktualisieren</button><span>{owner ? 'Projektmanager' : 'Ressource'}</span></div>
         {owner && <details className="panel"><summary>Benutzer und Ressourcen verwalten</summary><p>Die Zuordnung gilt nur für dieses Projekt. Ressourcenbenutzer sehen ausschließlich ihre freigegebenen Aufgaben.</p><div className="resource-grid">{data.resources.map(r => <ResourceEditor key={`${projectId}:${r.id}:${r.auth_user_id}`} resource={r} project={project} reload={reload} />)}</div></details>}
         {owner && <PlanImport key={projectId} project={project} reload={reload} />}
+        <ProgressDashboard key={projectId} data={data} />
         <section><h2>{owner ? 'Projektaufgaben' : 'Meine Aufgaben'}</h2>
           {!data.tasks.length && <p>Keine zugewiesenen Aufgaben vorhanden.</p>}
           {rows.map(({ task, depth, hasChildren, open }) => {
