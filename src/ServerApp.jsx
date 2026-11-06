@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './server.css'
+import dashboardLogo from './dashboardLogo'
 import { parseProjectXml } from './planImport'
 import { taskOutline } from './taskOutline'
 import { projectArea } from './projectArea'
@@ -220,7 +221,7 @@ export function ProgressDashboard({ data, now, statuses, project }) {
   for (const report of data.reports) latestByTask.set(report.task_id, latestReport([latestByTask.get(report.task_id), report].filter(Boolean)))
   const reports = [...data.reports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || String(b.id).localeCompare(String(a.id)))
   return <section className="panel dashboard" aria-labelledby="dashboard-title">
-    <div className="actions"><h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2><button onClick={exportExcel} disabled={exporting}>{exporting ? 'Excel wird erstellt …' : 'Excel exportieren (.xlsx)'}</button></div>
+    <div className="actions"><div className="dashboard-brand"><img className="dashboard-logo" src={dashboardLogo} alt="Schiffslogo" width="64" height="62" /><h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2></div><button onClick={exportExcel} disabled={exporting}>{exporting ? 'Excel wird erstellt …' : 'Excel exportieren (.xlsx)'}</button></div>
     {exportError && <p role="alert">{exportError}</p>}
     <p>{reports.length} Einträge · Neueste zuerst · Uhrzeit: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
     <details className="schedule-help"><summary>So funktioniert die Terminampel</summary><p>Grün: im Zeitplan. Gelb: Termin knapp. Rot: Termin gefährdet. Übergeordnete Ebenen zeigen den kritischsten Status ihrer aktiven Untervorgänge. Grau: keine belastbare Prognose.</p><p>Die Prognose nutzt den zuletzt bestätigten Fortschritt und die seit Planstart verstrichene Zeit bei gleichmäßigem Verlauf. Grundlage sind Kalendertage ohne Arbeitskalender und Abhängigkeiten. Alle Listeneinträge zeigen den aktuellen Vorgangsstatus. Fotolinks im Excel-Export gelten eine Stunde ab Export.</p></details>
