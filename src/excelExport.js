@@ -1,4 +1,5 @@
 import { taskOutline } from './taskOutline.js'
+import { projectArea } from './projectArea.js'
 import { latestReport } from './scheduleStatus.js'
 
 const escapeXml = value => String(value ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]))
@@ -54,15 +55,9 @@ export function buildXlsx(sheets) {
 
 export async function exportProjectXlsx({ data, statuses, project, now, photoUrl }) {
   const tasks = new Map(data.tasks.map(t => [t.id, t]))
-  const byUid = new Map(data.tasks.map(t => [t.project_task_uid, t]))
   const resources = new Map(data.resources.map(r => [r.id, r.name]))
   const timestamp = value => value ? new Date(value).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : ''
-  const place = task => {
-    const names = [], seen = new Set(task ? [task.id] : [])
-    let parent = byUid.get(task?.parent_task_uid)
-    while (parent && !seen.has(parent.id)) { seen.add(parent.id); names.unshift(parent.name); parent = byUid.get(parent.parent_task_uid) }
-    return names.join(' → ')
-  }
+  const place = task => projectArea(task, data.tasks, project)
   const status = id => ({ value: statuses.get(id)?.label || 'Nicht bewertbar', state: statuses.get(id)?.state })
   const expanded = Object.fromEntries(data.tasks.map(t => [t.id, true]))
   const taskRows = taskOutline(data.tasks, expanded).map(({ task, depth }) => {
