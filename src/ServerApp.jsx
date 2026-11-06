@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import './server.css'
 import { parseProjectXml } from './planImport'
 import { taskOutline } from './taskOutline'
+import { projectArea } from './projectArea'
 import { scheduleStatus, scheduleStatuses, latestReport } from './scheduleStatus'
 
 const date = value => value ? new Date(value).toLocaleDateString('de-DE') : '–'
@@ -214,21 +215,10 @@ export function ProgressDashboard({ data, now, statuses, project }) {
     finally { setExporting(false) }
   }
   const tasks = new Map(data.tasks.map(t => [t.id, t]))
-  const byUid = new Map(data.tasks.map(t => [t.project_task_uid, t]))
   const resources = new Map(data.resources.map(r => [r.id, r]))
   const latestByTask = new Map()
   for (const report of data.reports) latestByTask.set(report.task_id, latestReport([latestByTask.get(report.task_id), report].filter(Boolean)))
   const reports = [...data.reports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || String(b.id).localeCompare(String(a.id)))
-  function place(task) {
-    const parts = []
-    const seen = new Set(task ? [task.id] : [])
-    let parent = byUid.get(task?.parent_task_uid)
-    while (parent && !seen.has(parent.id)) {
-      seen.add(parent.id); parts.unshift(parent.name)
-      parent = byUid.get(parent.parent_task_uid)
-    }
-    return parts.join(' → ') || 'Nicht hinterlegt'
-  }
   return <section className="panel dashboard" aria-labelledby="dashboard-title">
     <div className="actions"><h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2><button onClick={exportExcel} disabled={exporting}>{exporting ? 'Excel wird erstellt …' : 'Excel exportieren (.xlsx)'}</button></div>
     {exportError && <p role="alert">{exportError}</p>}
@@ -241,7 +231,7 @@ export function ProgressDashboard({ data, now, statuses, project }) {
         const photos = data.media.filter(m => m.progress_update_id === report.id && m.media_type === 'photo')
         return <tr key={report.id}>
           <td><time dateTime={report.created_at}>{new Date(report.created_at).toLocaleString('de-DE')}</time></td>
-          <td>{place(task)}</td><td>{task ? `${task.wbs || ''} ${task.name}`.trim() : 'Vorgang nicht verfügbar'}</td>
+          <td>{projectArea(task, data.tasks, project)}</td><td>{task ? `${task.wbs || ''} ${task.name}`.trim() : 'Vorgang nicht verfügbar'}</td>
           <td>{report.percent_complete} %</td><td><ScheduleSignal task={task} report={latestByTask.get(report.task_id)} now={now} status={statuses.get(report.task_id)} /></td><td className="comment">{report.comment || '–'}</td>
           <td>{resources.get(report.resource_id)?.name || 'Nicht verfügbar'}</td>
           <td>{photos.length ? photos.map((item, index) => <PhotoLink key={item.id} item={item} index={index} />) : 'Kein Foto'}</td>
@@ -325,11 +315,13 @@ export default function ServerApp() {
       supabase.from('task_resources').select('task_id,resource_id'),
       allProjectRows('progress_updates', projectId),
       allProjectRows('media', projectId),
+      supabase.rpc('get_task_project_areas', { p_project_id: projectId }),
     ])
     if (current !== generation.current) return
     const [tasks, resources, links] = results.slice(0, 3).map(checked)
     const [reports, media] = results.slice(3)
-    setData({ tasks, resources, links, reports, media })
+    const areas = new Map(checked(results[5]).map(row => [row.task_id, row.project_area]))
+    setData({ tasks: tasks.map(task => ({ ...task, project_area: areas.get(task.id) })), resources, links, reports, media })
   }
   useEffect(() => {
     setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setExpanded({}); if (session && projectId) setError('')
