@@ -41,3 +41,18 @@
   .dashboard-logo { width: 48px; flex-basis: 48px; }
   .dashboard-brand h2 { font-size: 21px; }
 }
+
+.weekly-progress { margin: 24px 0 30px; padding-bottom: 24px; border-bottom: 1px solid #d8e3de; }
+.weekly-progress label { max-width: 720px; }
+.weekly-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 18px 0; font-size: 14px; }
+.weekly-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.weekly-legend i { display: inline-block; width: 20px; height: 10px; }
+.weekly-legend .weekly-plan { height: 0; border-top: 3px dashed #2874b2; }
+.weekly-legend .weekly-actual { height: 0; border-top: 3px solid #754ab4; }
+.weekly-scroll { overflow-x: auto; max-width: 100%; }
+.weekly-chart { display: block; width: 100%; height: auto; }
+.weekly-chart text { font-family: inherit; font-size: 12px; fill: #243247; }
+.weekly-grid { stroke: #dce4e9; stroke-width: 1; }
+.weekly-hit { cursor: pointer; }
+.weekly-hit:focus-visible { outline: 2px solid #16685c; outline-offset: -2px; }
+.weekly-detail { min-height: 44px; overflow-wrap: anywhere; font-size: 14px; }
