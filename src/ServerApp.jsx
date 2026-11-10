@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './server.css'
 import dashboardLogo from './dashboardLogo'
+import WeeklyProgress from './WeeklyProgress'
 import { parseProjectXml } from './planImport'
 import { taskOutline } from './taskOutline'
 import { projectArea } from './projectArea'
@@ -204,7 +205,7 @@ export function ScheduleSignal({ task, report, now, status: supplied }) {
   </div>
 }
 
-export function ProgressDashboard({ data, now, statuses, project }) {
+export function ProgressDashboard({ data, now, statuses, project, owner }) {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   async function exportExcel() {
@@ -223,6 +224,7 @@ export function ProgressDashboard({ data, now, statuses, project }) {
   return <section className="panel dashboard" aria-labelledby="dashboard-title">
     <div className="actions"><div className="dashboard-brand"><img className="dashboard-logo" src={dashboardLogo} alt="Schiffslogo" width="64" height="62" /><h2 id="dashboard-title">Dashboard · Fortschrittsmeldungen</h2></div><button onClick={exportExcel} disabled={exporting}>{exporting ? 'Excel wird erstellt …' : 'Excel exportieren (.xlsx)'}</button></div>
     {exportError && <p role="alert">{exportError}</p>}
+    <WeeklyProgress data={data} now={now} project={project} owner={owner} />
     <p>{reports.length} Einträge · Neueste zuerst · Uhrzeit: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
     <details className="schedule-help"><summary>So funktioniert die Terminampel</summary><p>Grün: im Zeitplan. Gelb: Termin knapp. Rot: Termin gefährdet. Übergeordnete Ebenen zeigen den kritischsten Status ihrer aktiven Untervorgänge. Grau: keine belastbare Prognose.</p><p>Die Prognose nutzt den zuletzt bestätigten Fortschritt und die seit Planstart verstrichene Zeit bei gleichmäßigem Verlauf. Grundlage sind Kalendertage ohne Arbeitskalender und Abhängigkeiten. Alle Listeneinträge zeigen den aktuellen Vorgangsstatus. Fotolinks im Excel-Export gelten eine Stunde ab Export.</p></details>
     {!reports.length ? <p>Noch keine Fortschrittsmeldungen vorhanden.</p> : <div className="dashboard-scroll" tabIndex="0" role="region" aria-label="Liste der Fortschrittsmeldungen"><table>
@@ -349,7 +351,7 @@ export default function ServerApp() {
         <div className="project-bar"><label>Projekt<select value={projectId} onChange={e => setProjectId(e.target.value)}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button onClick={() => reload().catch(e => setError(e.message))}>Aktualisieren</button><span>{owner ? 'Projektmanager' : 'Ressource'}</span></div>
         {owner && <details className="panel"><summary>Benutzer und Ressourcen verwalten</summary><p>Die Zuordnung gilt nur für dieses Projekt. Ressourcenbenutzer sehen ausschließlich ihre freigegebenen Aufgaben.</p><div className="resource-grid">{data.resources.map(r => <ResourceEditor key={`${projectId}:${r.id}:${r.auth_user_id}`} resource={r} project={project} reload={reload} />)}</div></details>}
         {owner && <PlanImport key={projectId} project={project} reload={reload} />}
-        <ProgressDashboard key={projectId} data={data} now={now} statuses={statuses} project={project} />
+        <ProgressDashboard key={projectId} data={data} now={now} statuses={statuses} project={project} owner={owner} />
         <section><h2>{owner ? 'Projektaufgaben' : 'Meine Aufgaben'}</h2>
           {!data.tasks.length && <p>Keine zugewiesenen Aufgaben vorhanden.</p>}
           {rows.map(({ task, depth, hasChildren, open }) => {
