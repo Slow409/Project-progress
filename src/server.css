@@ -35,9 +35,12 @@
 
 .dashboard-brand { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 280px; }
 .dashboard-logo { display: block; width: 64px; height: auto; flex: 0 0 64px; border-radius: 8px; }
+.dashboard-nit-logo { display: block; width: 150px; height: auto; flex: 0 0 150px; }
 .dashboard-brand h2 { margin: 0; overflow-wrap: anywhere; }
 @media(max-width:600px) {
-  .dashboard-brand { gap: 12px; }
+  .dashboard-brand { gap: 12px; flex-wrap: wrap; }
+  .dashboard-nit-logo { width: 120px; flex-basis: 120px; }
+  .dashboard-brand h2 { flex-basis: 100%; }
   .dashboard-logo { width: 48px; flex-basis: 48px; }
   .dashboard-brand h2 { font-size: 21px; }
 }
