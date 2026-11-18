@@ -15,9 +15,12 @@ function PlanImport({ project, reload }) {
   const [plan, setPlan] = useState(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const applying = useRef(false)
+  const [importFailed, setImportFailed] = useState(false)
   async function preview(e) {
     const file = e.target.files?.[0]; e.target.value = ''; setPlan(null); setMessage('')
     if (!file) return
+    setImportFailed(false)
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error('Die XML-Datei darf höchstens 10 MB groß sein.')
       const parsed = parseProjectXml(await file.text(), file.name)
@@ -29,16 +32,19 @@ function PlanImport({ project, reload }) {
         return row
       })
       setPlan({ ...parsed, payload: tasks })
-    } catch (e) { setMessage(e.message) }
+    } catch (e) { setImportFailed(true); setMessage(e.message) }
   }
   async function apply() {
-    setBusy(true)
+    if (!plan || applying.current) return
+    applying.current = true
+    setBusy(true); setImportFailed(false); setMessage('Plan wird übernommen …')
     try {
       checked(await supabase.rpc('apply_project_xml_plan_with_resources', { p_project_id: project.id, p_file_name: plan.fileName, p_plan: plan.payload, p_resources: plan.resources, p_assignments: plan.assignments }))
-      setPlan(null); setMessage('Projektplan auf dem Server aktualisiert. Bestehende Meldungen und Benutzerzuordnungen bleiben erhalten.'); await reload()
-    } catch (e) { setMessage(e.message) } finally { setBusy(false) }
+      setPlan(null); setMessage('Projektplan auf dem Server aktualisiert. Bestehende Meldungen und Benutzerzuordnungen bleiben erhalten.')
+      try { await reload() } catch { setMessage('Der Plan wurde gespeichert. Die Ansicht konnte noch nicht neu geladen werden. Bitte auf „Aktualisieren“ tippen.') }
+    } catch (e) { setImportFailed(true); setMessage(`Plan konnte nicht übernommen werden: ${e.message || 'Bitte Verbindung und Anmeldung prüfen.'}`) } finally { applying.current = false; setBusy(false) }
   }
-  return <details className="panel"><summary>MS-Project-Plan aktualisieren</summary><p>Wähle den XML-Plan für „{project.name}“. Fehlende Vorgänge werden als inaktiv markiert; Meldungen bleiben erhalten.</p><input type="file" accept=".xml" disabled={busy} onChange={preview} aria-label="MS-Project-XML auswählen" />{plan && <div><p><strong>{plan.name}</strong>: {plan.tasks.length} Vorgänge, {plan.resources.length} Ressourcen, {plan.assignments.length} Zuordnungen.</p><p>Prüfe, dass die Datei zum ausgewählten Projekt gehört.</p><ul>{plan.tasks.slice(0,12).map(t => <li key={t.msProjectUid}>{t.wbs} {t.text} · {t.planStart} – {t.planFinish}</li>)}</ul><button disabled={busy} onClick={apply}>Plan für dieses Projekt übernehmen</button> <button disabled={busy} onClick={() => setPlan(null)}>Abbrechen</button></div>}{message && <p role="status">{message}</p>}</details>
+  return <details className="panel"><summary>MS-Project-Plan aktualisieren</summary><p>Wähle den XML-Plan für „{project.name}“. Fehlende Vorgänge werden als inaktiv markiert; Meldungen bleiben erhalten.</p><input type="file" accept=".xml" disabled={busy} onChange={preview} aria-label="MS-Project-XML auswählen" />{plan && <div><p><strong>{plan.name}</strong>: {plan.tasks.length} Vorgänge, {plan.resources.length} Ressourcen, {plan.assignments.length} Zuordnungen.</p><p>Prüfe, dass die Datei zum ausgewählten Projekt gehört.</p><ul>{plan.tasks.slice(0,12).map(t => <li key={t.msProjectUid}>{t.wbs} {t.text} · {t.planStart} – {t.planFinish}</li>)}</ul><div className="plan-import-actions" aria-busy={busy}><button type="button" className="plan-import-confirm" disabled={busy} onClick={apply}>{busy ? 'Plan wird übernommen …' : 'Plan für dieses Projekt übernehmen'}</button><button type="button" className="plan-import-cancel" disabled={busy} onClick={() => { setPlan(null); setMessage('Import abgebrochen. Der Projektplan wurde nicht geändert.'); setImportFailed(false) }}>Abbrechen</button></div></div>}{message && <p className={importFailed ? 'error' : 'plan-import-message'} role={importFailed ? 'alert' : 'status'}>{message}</p>}</details>
 }
 
 export function ResourceEditor({ resource, project, reload }) {
