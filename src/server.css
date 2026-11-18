@@ -59,3 +59,11 @@
 .weekly-hit { cursor: pointer; }
 .weekly-hit:focus-visible { outline: 2px solid #16685c; outline-offset: -2px; }
 .weekly-detail { min-height: 44px; overflow-wrap: anywhere; font-size: 14px; }
+
+.plan-import-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px; margin-top: 20px; }
+.server-app .plan-import-confirm { background: #16685c; border-color: #16685c; white-space: normal; }
+.server-app .plan-import-cancel { background: #e5e7eb; border-color: #9ca3af; color: #243247; }
+.server-app .plan-import-confirm:hover:not(:disabled) { background: #115348; }
+.server-app .plan-import-cancel:hover:not(:disabled) { background: #d1d5db; }
+.plan-import-message { padding: 12px; background: #edf5f2; border-left: 4px solid #16685c; border-radius: 6px; }
+@media(max-width:600px) { .plan-import-actions { flex-direction: column; } .plan-import-actions button { width: 100%; } }
