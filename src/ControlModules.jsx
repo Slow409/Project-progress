@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
-import { metrics } from './controlMetrics.js'
+import { metrics, managementSummary } from './controlMetrics.js'
 
 const DAY = 86400000
 const date = value => value ? new Date(value).toLocaleDateString('de-DE') : '–'
@@ -8,6 +8,7 @@ const pct = value => value == null ? '–' : Math.round(value) + ' %'
 export const roles = { pm: 'Projektmanager', controlling: 'Controlling', observer: 'Observer', managing: 'Managing Level', resource: 'Ressource' }
 export const canFinance = role => role === 'pm' || role === 'controlling'
 export const canReport = role => role === 'pm' || role === 'resource'
+export const canReadAdmin = role => ['pm','observer','managing'].includes(role)
 const money = value => value == null ? '–' : Number(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 const checked = result => { if (result.error) throw result.error; return result.data || [] }
 
@@ -27,7 +28,7 @@ export function Portfolio({ projects, now, selectProject }) {
       const out=[];for(let offset=0;;offset+=500){const items=checked(await supabase.from(table).select('*').eq('project_id',p.id).order('id').range(offset,offset+499));out.push(...items);if(items.length<500)return out}
     }));return {project:p, tasks,reports}
   })).then(r=>{if(active)setRows(r)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[projects])
-  return <section className="module-panel"><h2>Managing Level · Projektportfolio</h2><p>Nur ausdrücklich freigegebene Projekte. Keine Finanzdaten.</p>{error&&<p role="alert">{error}</p>}<div className="dashboard-scroll"><table><thead><tr><th>Projekt</th><th>Soll</th><th>Ist</th><th>Risiken</th><th>Prognose</th></tr></thead><tbody>{rows.map(({project,tasks,reports})=>{const m=metrics(tasks,reports,now);return <tr key={project.id}><td><button onClick={()=>selectProject(project.id)}>{project.name}</button></td><td>{pct(m.target)}</td><td>{pct(m.actual)}</td><td>{m.risk.length}</td><td>{date(m.forecast)}</td></tr>})}</tbody></table></div></section>
+  return <section className="module-panel"><h2>Managing Level · Projektportfolio</h2><p>Nur ausdrücklich freigegebene Projekte. Keine Finanzdaten.</p>{error&&<p role="alert">{error}</p>}<div className="dashboard-scroll"><table><thead><tr><th>Projekt</th><th>Soll</th><th>Ist</th><th>Risiken</th><th>Prognose</th><th>Bericht</th></tr></thead><tbody>{rows.map(({project,tasks,reports})=>{const m=metrics(tasks,reports,now);return <tr key={project.id}><td><button onClick={()=>selectProject(project.id)}>{project.name}</button></td><td>{pct(m.target)}</td><td>{pct(m.actual)}</td><td>{m.risk.length}</td><td>{date(m.forecast)}</td><td><button onClick={()=>selectProject(project.id,'management-report')}>Management Report</button></td></tr>})}</tbody></table></div></section>
 }
 export function Finance({ project, role }) {
   const [rows,setRows]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(false)
@@ -39,13 +40,13 @@ export function Finance({ project, role }) {
   const row=rows[0],ratio=(a,b)=>Number(b)>0?(Number(a)/Number(b)).toFixed(2):'–'
   return <section className="module-panel"><h2>Controlling · Earned Value</h2><p>Vertrauliche Projektdaten · nur PM und Controlling. Werte in EUR, manuell zum Stichtag eingetragen.</p>{error&&<p role="alert">{error}</p>}{row&&<div className="kpi-grid">{[['Budget (BAC)',money(row.budget)],['Planwert (PV)',money(row.planned_value)],['Erarbeiteter Wert (EV)',money(row.earned_value)],['Istkosten (AC)',money(row.actual_cost)],['SPI',ratio(row.earned_value,row.planned_value)],['CPI',ratio(row.earned_value,row.actual_cost)]].map(([k,v])=><div className="kpi" key={k}><small>{k}</small><strong>{v}</strong></div>)}</div>}<form onSubmit={save}><label>Stichtag<input type="date" required value={form.snapshot_date} onChange={e=>setForm({...form,snapshot_date:e.target.value})}/></label>{[['budget','Budget (BAC)'],['planned_value','Planwert (PV)'],['earned_value','Erarbeiteter Wert (EV)'],['actual_cost','Istkosten (AC)']].map(([key,label])=><label key={key}>{label}<input type="number" min="0" step=".01" required value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})}/></label>)}<button disabled={busy}>Stichtag speichern</button></form><h3>Historie</h3><div className="dashboard-scroll"><table><thead><tr><th>Stichtag</th><th>BAC</th><th>PV</th><th>EV</th><th>AC</th><th>SPI</th><th>CPI</th></tr></thead><tbody>{rows.map(r=><tr key={r.snapshot_date}><td>{date(r.snapshot_date)}</td><td>{money(r.budget)}</td><td>{money(r.planned_value)}</td><td>{money(r.earned_value)}</td><td>{money(r.actual_cost)}</td><td>{ratio(r.earned_value,r.planned_value)}</td><td>{ratio(r.earned_value,r.actual_cost)}</td></tr>)}</tbody></table></div></section>
 }
-export function RoleAdmin({ project }) {
+export function RoleAdmin({ project, readOnly=false }) {
   const [rows,setRows]=useState([]),[email,setEmail]=useState(''),[role,setRole]=useState('observer'),[error,setError]=useState(''),[busy,setBusy]=useState(false)
   async function load(){setRows(checked(await supabase.from('project_memberships').select('*').eq('project_id',project.id)))}
   useEffect(()=>{setRows([]);setError('');load().catch(e=>setError(e.message))},[project.id])
   async function grant(e){e.preventDefault();setBusy(true);setError('');try{checked(await supabase.rpc('assign_project_role',{p_project_id:project.id,p_email:email.trim().toLowerCase(),p_role:role}));setEmail('');await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
   async function revoke(userId){setBusy(true);try{checked(await supabase.from('project_memberships').delete().eq('project_id',project.id).eq('user_id',userId));await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
-  return <section className="module-panel"><h2>Projektrollen verwalten</h2><p>Nur vorhandene E-Mail-Konten. Beim Entzug einer Rolle gelten wieder ggf. bestehende Ressourcenzuordnungen. Leserollen erhalten Zugriff auf dieses Projekt, nicht auf andere Projekte. Managing Level aggregiert nur explizit freigegebene Projekte.</p>{error&&<p role="alert">{error}</p>}<form onSubmit={grant}><label>E-Mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Rolle<select value={role} onChange={e=>setRole(e.target.value)}>{['observer','managing','controlling'].map(r=><option key={r} value={r}>{roles[r]}</option>)}</select></label><button disabled={busy}>Rolle zuweisen</button></form><ul>{rows.map(r=><li key={r.user_id}>{r.email} · {roles[r.role]} <button disabled={busy} onClick={()=>revoke(r.user_id)}>Rolle entziehen</button></li>)}</ul></section>
+  return <section className="module-panel"><h2>{readOnly?'Projektrollen · Leseansicht':'Projektrollen verwalten'}</h2><p>{readOnly?'Vollständige Rollenübersicht ohne Änderungsberechtigung.':'Nur vorhandene E-Mail-Konten.'}  Beim Entzug einer Rolle gelten wieder ggf. bestehende Ressourcenzuordnungen. Leserollen erhalten Zugriff auf dieses Projekt, nicht auf andere Projekte. Managing Level aggregiert nur explizit freigegebene Projekte.</p>{error&&<p role="alert">{error}</p>}{!readOnly&&<form onSubmit={grant}><label>E-Mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Rolle<select value={role} onChange={e=>setRole(e.target.value)}>{['observer','managing','controlling'].map(r=><option key={r} value={r}>{roles[r]}</option>)}</select></label><button disabled={busy}>Rolle zuweisen</button></form>}<ul>{rows.map(r=><li key={r.user_id}>{r.email} · {roles[r.role]} {!readOnly&&<button disabled={busy} onClick={()=>revoke(r.user_id)}>Rolle entziehen</button>}</li>)}</ul></section>
 }
 export function WeeklyReport({project,data,now}) {
   const m=metrics(data.tasks,data.reports,now)
@@ -63,4 +64,26 @@ export function Quality({project,data,role}) {
   async function add(e){e.preventDefault();setBusy(true);setError('');try{checked(await supabase.from('project_issues').insert({...form,project_id:project.id,due_date:form.due_date||null}));setForm({task_id:'',title:'',description:'',due_date:''});await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
   async function update(id,status){setBusy(true);try{checked(await supabase.from('project_issues').update({status}).eq('id',id));await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
   return <section className="module-panel"><h2>Qualität · Mängel und Maßnahmen</h2>{error&&<p role="alert">{error}</p>}<p>{issues.filter(i=>i.status!=='closed').length} offene Maßnahmen · {issues.filter(i=>i.status==='closed').length} erledigt</p>{canReport(role)&&<form onSubmit={add}><label>Vorgang<select required value={form.task_id} onChange={e=>setForm({...form,task_id:e.target.value})}><option value="">Vorgang auswählen</option>{tasks.map(t=><option key={t.id} value={t.id}>{t.wbs} {t.name}</option>)}</select></label><label>Mangel<input required maxLength={200} value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Beschreibung<textarea maxLength={5000} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>Fällig bis<input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/></label><button disabled={busy}>Mangel erfassen</button></form>}<div className="dashboard-scroll"><table><thead><tr><th>Vorgang</th><th>Mangel</th><th>Fällig</th><th>Status / Maßnahme</th></tr></thead><tbody>{issues.map(i=><tr key={i.id}><td>{data.tasks.find(t=>t.id===i.task_id)?.name||'–'}</td><td><strong>{i.title}</strong><p>{i.description}</p></td><td>{date(i.due_date)}</td><td>{role==='pm'?<select aria-label="Status" disabled={busy} value={i.status} onChange={e=>update(i.id,e.target.value)}>{Object.entries(statusLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>:statusLabel[i.status]}</td></tr>)}</tbody></table></div></section>
+}
+
+export function ManagementReport({project,data,now}) {
+  const r=managementSummary(data.tasks,data.reports,now)
+  return <section className="module-panel weekly-print management-extract">
+    <h2>Management Report · {project.name}</h2>
+    <p>Stand {date(now)} · Kompakter Auszug · Ohne Finanzdaten</p>
+    <div className="kpi-grid">
+      {[['Soll · fällige Vorgänge',pct(r.target)],['Ist · gemeldeter Fortschritt',pct(r.actual)],['Zur Vorwoche',r.weeklyDelta==null?'–':(r.weeklyDelta>0?'+':'')+r.weeklyDelta.toFixed(1)+' %-Punkte'],['Abgeschlossen',r.done+' / '+r.total],['Terminrisiken',r.risks],['Fehlende Meldungen (7 Tage)',r.stale]].map(([label,value])=><div className="kpi" key={label}><small>{label}</small><strong>{value}</strong></div>)}
+    </div>
+    <h3>Terminprognose</h3><p>Planende: {date(r.plannedFinish)} · Hochrechnung: {date(r.forecast)} · Abweichung: {r.deviation==null?'–':(r.deviation>0?'+':'')+r.deviation+' Kalendertage'}</p>
+    <p className="small">Vereinfachte Hochrechnung ohne Arbeitstage und kritischen Pfad. Bei fehlenden Prognosen wird kein Projektendtermin geschätzt.</p>
+    <h3>Kritische Projektbereiche · max. 5</h3>
+    {r.criticalAreas.length?<div className="dashboard-scroll"><table><thead><tr><th>Bereich</th><th>Ist</th><th>Risiken</th><th>Fehlende Meldungen</th></tr></thead><tbody>{r.criticalAreas.map(a=><tr key={a.name}><td>{a.name}</td><td>{pct(a.progress)}</td><td>{a.risks}</td><td>{a.stale}</td></tr>)}</tbody></table></div>:<p>Keine kritischen Bereiche in den vorliegenden Daten.</p>}
+    <h3>Wesentliche Risiken · max. 5</h3>
+    {r.topRisks.length?<ul>{r.topRisks.map(t=><li key={t.id}>{t.wbs} {t.name} · Planende {date(t.finish)} · {t.status||'Überfällig'}</li>)}</ul>:<p>Keine erkannten Terminrisiken.</p>}
+    <h3>Handlungsbedarf</h3><ul>{r.risks>0&&<li>{r.risks} gefährdete oder überfällige Vorgänge prüfen und Maßnahmen mit den Verantwortlichen abstimmen.</li>}{r.stale>0&&<li>Für {r.stale} Vorgänge aktuelle Fortschrittsmeldungen anfordern.</li>}{r.risks===0&&r.stale===0&&<li>Regelmäßige Kontrolle fortführen.</li>}</ul>
+    <button className="no-print" onClick={()=>window.print()}>Management Report drucken / als PDF speichern</button>
+  </section>
+}
+export function ReadOnlyResources({data}) {
+  return <section className="module-panel"><h2>Benutzer und Ressourcen · Leseansicht</h2><p>Zuordnungen und Zugriffsstatus werden angezeigt. Änderungen sind dem PM vorbehalten.</p><div className="dashboard-scroll"><table><thead><tr><th>Ressource</th><th>Benutzer</th><th>Zugriff</th><th>Zugeordnete Vorgänge</th></tr></thead><tbody>{data.resources.map(r=><tr key={r.id}><td>{r.name}</td><td>{r.auth_email||r.email||(r.auth_user_id?'Verbunden':'Nicht verbunden')}</td><td>{r.access_enabled?'Freigegeben':'Gesperrt'}</td><td>{data.links.filter(l=>l.resource_id===r.id).length}</td></tr>)}</tbody></table></div></section>
 }
