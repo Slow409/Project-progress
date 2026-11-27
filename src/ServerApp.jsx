@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { roles, canFinance, canReport, ManagementDashboard, Portfolio, ScheduleHistory, Finance, RoleAdmin, WeeklyReport, Quality } from './ControlModules'
+import { roles, canFinance, canReport, canReadAdmin, ManagementDashboard, ManagementReport, Portfolio, ScheduleHistory, Finance, RoleAdmin, ReadOnlyResources, WeeklyReport, Quality } from './ControlModules'
 import { supabase } from './lib/supabase'
 import './server.css'
 import dashboardLogo from './dashboardLogo'
@@ -286,7 +286,7 @@ export default function ServerApp() {
   const owner = Boolean(project && project.owner_user_id === session?.user.id)
   const role = owner ? 'pm' : project?.membershipRole || 'resource'
   const portfolioProjects = useMemo(() => projects.filter(p => p.membershipRole === 'managing'), [projects])
-  const navigation = [['dashboard','Dashboard'],['schedule','Terminplanung'],['progress','Fortschritt'],['quality','Qualität'],['reporting','Reporting'],...(canFinance(role) ? [['finance','Controlling']] : []),...(owner ? [['admin','Administration']] : []),...(portfolioProjects.length ? [['portfolio','Managing Level']] : [])]
+  const navigation = [['dashboard','Dashboard'],['schedule','Terminplanung'],['progress','Fortschritt'],['quality','Qualität'],['reporting','Reporting'],...(canFinance(role) ? [['finance','Controlling']] : []),...(canReadAdmin(role) ? [['management-report','Management Report'],['admin','Administration']] : []),...(portfolioProjects.length ? [['portfolio','Managing Level']] : [])]
   const activeModule = navigation.some(([key]) => key === module) ? module : 'dashboard'
 
   useEffect(() => {
@@ -373,14 +373,16 @@ export default function ServerApp() {
       {!projects.length ? <p>Deinem Konto ist noch kein freigegebenes Projekt zugeordnet. Bitte kontaktiere den Projektmanager.</p> : <>
         <div className="project-bar"><label>Projekt<select value={projectId} onChange={e => {setLoadedProject('');setProjectId(e.target.value);setModule('dashboard')}}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button onClick={() => reload().catch(e => setError(e.message))}>Aktualisieren</button><span>{roles[role]}</span></div>
         <nav className="module-nav" aria-label="Anwendungsbereiche">{navigation.map(([key,label])=><button key={key} type="button" aria-pressed={activeModule===key} onClick={()=>setModule(key)}>{label}</button>)}</nav>
-        {activeModule==='portfolio' && <Portfolio projects={portfolioProjects} now={now} selectProject={id=>{setLoadedProject(id===projectId?loadedProject:'');setProjectId(id);setModule('dashboard')}} />}
+        {activeModule==='portfolio' && <Portfolio projects={portfolioProjects} now={now} selectProject={(id,target='dashboard')=>{setLoadedProject(id===projectId?loadedProject:'');setProjectId(id);setModule(target)}} />}
         {activeModule!=='portfolio' && loadedProject!==projectId && <p>Projektdaten werden geladen …</p>}
         {activeModule!=='portfolio' && loadedProject===projectId && <>
-        {activeModule==='admin' && owner && <RoleAdmin key={projectId} project={project} />}
+        {activeModule==='admin' && canReadAdmin(role) && <RoleAdmin key={projectId+role} project={project} readOnly={!owner} />}
+        {activeModule==='admin' && canReadAdmin(role) && !owner && <ReadOnlyResources data={data} />}
         {activeModule==='admin' && owner && <details className="panel"><summary>Benutzer und Ressourcen verwalten</summary><p>Die Zuordnung gilt nur für dieses Projekt. Ressourcenbenutzer sehen ausschließlich ihre freigegebenen Aufgaben.</p><div className="resource-grid">{data.resources.map(r => <ResourceEditor key={`${projectId}:${r.id}:${r.auth_user_id}`} resource={r} project={project} reload={reload} />)}</div></details>}
         {activeModule==='schedule' && owner && <PlanImport key={projectId} project={project} reload={reload} />}
         {activeModule==='schedule' && <ScheduleHistory data={data} />}
         {activeModule==='dashboard' && <ManagementDashboard data={data} now={now} />}
+        {activeModule==='management-report' && canReadAdmin(role) && <ManagementReport project={project} data={data} now={now} />}
         {activeModule==='quality' && <Quality key={projectId} project={project} data={data} role={role} />}
         {activeModule==='reporting' && <WeeklyReport project={project} data={data} now={now} />}
         {activeModule==='finance' && canFinance(role) && <Finance key={projectId+role} project={project} role={role} />}
