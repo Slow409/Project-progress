@@ -82,7 +82,7 @@ create policy financial_update on public.project_financials for update to authen
 
 alter table public.tasks add column planned_work_hours numeric check(planned_work_hours>=0 and planned_work_hours<1000000000);
 create function public.apply_modular_project_plan(p_project_id uuid,p_file_name text,p_plan jsonb,p_resources jsonb,p_assignments jsonb) returns jsonb
-language plpgsql security invoker set search_path='' as $
+language plpgsql security invoker set search_path='' as $$
 declare result jsonb; tz text;
 begin
   if not public.is_project_owner(p_project_id) then raise exception 'Nur PM'; end if;
@@ -94,7 +94,7 @@ begin
     planned_work_hours=coalesce((x.value->>'workHours')::numeric,t.planned_work_hours)
   from jsonb_array_elements(p_plan) x where t.project_id=p_project_id and t.project_task_uid=(x.value->>'uid')::integer;
   return result;
-end $;
+end $$;
 revoke all on function public.apply_modular_project_plan(uuid,text,jsonb,jsonb,jsonb) from public,anon;
 grant execute on function public.apply_modular_project_plan(uuid,text,jsonb,jsonb,jsonb) to authenticated;
 
