@@ -252,14 +252,25 @@ export function ProgressDashboard({ data, now, statuses, project, owner }) {
 }
 
 // Fetch every permitted report, including projects with more than one API page.
-async function allProjectRows(table, projectId) {
+async function pagedRows(queryFactory) {
   const rows = []
   const size = 500
   for (let start = 0; ; start += size) {
-    const page = checked(await supabase.from(table).select('*').eq('project_id', projectId).order('created_at').order('id').range(start, start + size - 1))
+    const page = checked(await queryFactory().range(start, start+size-1))
     rows.push(...page)
-    if (page.length < size) return rows
+    if(page.length<size) return rows
   }
+}
+async function allProjectRows(table, projectId, order = 'created_at') {
+  return pagedRows(()=>supabase.from(table).select('*').eq('project_id',projectId).order(order).order('id'))
+}
+async function taskLinks(tasks) {
+  const links=[]
+  for(let i=0;i<tasks.length;i+=100){
+    const ids=tasks.slice(i,i+100).map(t=>t.id)
+    links.push(...await pagedRows(()=>supabase.from('task_resources').select('task_id,resource_id').in('task_id',ids).order('task_id').order('resource_id')))
+  }
+  return links
 }
 
 export default function ServerApp() {
@@ -335,19 +346,18 @@ export default function ServerApp() {
   async function reload() {
     if (!projectId) return
     const current = ++generation.current
-    const results = await Promise.all([
-      supabase.from('tasks').select('*').eq('project_id', projectId).order('project_task_uid'),
-      supabase.from('resources').select('*').eq('project_id', projectId).order('project_resource_uid'),
-      supabase.from('task_resources').select('task_id,resource_id'),
-      allProjectRows('progress_updates', projectId),
-      allProjectRows('media', projectId),
-      supabase.rpc('get_task_project_areas', { p_project_id: projectId }),
+    const [tasks,resources,reports,media,areaRows] = await Promise.all([
+      allProjectRows('tasks',projectId,'project_task_uid'),
+      allProjectRows('resources',projectId,'project_resource_uid'),
+      allProjectRows('progress_updates',projectId),
+      allProjectRows('media',projectId),
+      pagedRows(()=>supabase.rpc('get_task_project_areas',{p_project_id:projectId}).order('task_id')),
     ])
     if (current !== generation.current) return
-    const [tasks, resources, links] = results.slice(0, 3).map(checked)
-    const [reports, media] = results.slice(3)
-    const areas = new Map(checked(results[5]).map(row => [row.task_id, row.project_area]))
-    setData({ tasks: tasks.map(task => ({ ...task, project_area: areas.get(task.id) })), resources, links: links.filter(l => tasks.some(t=>t.id===l.task_id)), reports, media }); setLoadedProject(projectId)
+    const links=await taskLinks(tasks)
+    if (current !== generation.current) return
+    const areas = new Map(areaRows.map(row=>[row.task_id,row.project_area]))
+    setData({tasks:tasks.map(task=>({...task,project_area:areas.get(task.id)})),resources,links,reports,media});setLoadedProject(projectId)
   }
   useEffect(() => {
     setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setLoadedProject(''); setExpanded({}); if (session && projectId) setError('')
