@@ -18,7 +18,7 @@ language sql stable security definer set search_path='' as $$
 $$;
 revoke all on function private.project_member_role(uuid) from public, anon;
 grant execute on function private.project_member_role(uuid) to authenticated;
-create policy memberships_read on public.project_memberships for select to authenticated using (user_id=(select auth.uid()) or public.is_project_owner(project_id));
+create policy memberships_read on public.project_memberships for select to authenticated using (user_id=(select auth.uid()) or public.is_project_owner(project_id) or private.project_member_role(project_id) in ('observer','managing'));
 create policy memberships_revoke on public.project_memberships for delete to authenticated using (public.is_project_owner(project_id));
 create policy projects_member_read on public.projects for select to authenticated using (private.project_member_role(id) is not null);
 create policy tasks_member_read on public.tasks for select to authenticated using (private.project_member_role(project_id) is not null);
@@ -27,6 +27,12 @@ create policy links_member_read on public.task_resources for select to authentic
 create policy reports_member_read on public.progress_updates for select to authenticated using (private.project_member_role(project_id) is not null);
 create policy media_member_read on public.media for select to authenticated using (private.project_member_role(project_id) is not null);
 create policy revisions_member_read on public.plan_task_revisions for select to authenticated using (private.project_member_role(project_id) is not null);
+-- Full operational PM read access for Observer and Managing Level, never finance.
+create policy plan_imports_reader_select on public.plan_imports for select to authenticated using (private.project_member_role(project_id) in ('observer','managing'));
+create policy plan_import_changes_reader_select on public.plan_import_changes for select to authenticated using (exists(select 1 from public.plan_imports pi where pi.id=import_id and private.project_member_role(pi.project_id) in ('observer','managing')));
+create policy checkpoints_reader_select on public.project_checkpoints for select to authenticated using (private.project_member_role(project_id) in ('observer','managing'));
+create policy snapshots_reader_select on public.weekly_snapshots for select to authenticated using (private.project_member_role(project_id) in ('observer','managing'));
+create policy resource_access_events_reader_select on public.resource_access_events for select to authenticated using (private.project_member_role(project_id) in ('observer','managing'));
 create policy member_media_read on storage.objects for select to authenticated using (bucket_id='task-media' and exists(select 1 from public.media m where m.storage_path=objects.name and private.project_member_role(m.project_id) is not null));
 -- A project-level reader role overrides any old resource assignment on the same project.
 create policy memberships_reports_read_only on public.progress_updates as restrictive for insert to authenticated with check (public.is_project_owner(project_id) or private.project_member_role(project_id) is null);
