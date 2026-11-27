@@ -39,7 +39,19 @@
 
 .dashboard th { white-space: nowrap; }
 
-.resource > button { margin: 6px 8px 0 0; }
+/* Compact resource cards: keep both account actions side by side. */
+.resource-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 12px; }
+.resource { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; gap: 6px; padding: 10px; min-width: 0; }
+.resource > :not(button) { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
+.resource > span { margin-top: 0; font-size: 13px; }
+.server-app .resource > label { margin: 2px 0; font-size: 13px; }
+.server-app .resource input { padding: 7px 8px; font-size: 14px; }
+.server-app .resource > button { margin: 0; min-width: 0; min-height: 36px; padding: 5px 6px; font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; }
+.resource > button:only-of-type { grid-column: 1 / -1; }
+.server-app .resource > p { margin: 2px 0; font-size: 13px; }
+@media (max-width: 600px) {
+  .server-app .resource > button { min-height: 44px; font-size: 13px; }
+}
 
 .dashboard-brand { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 280px; }
 .dashboard-logo { display: block; width: 64px; height: auto; flex: 0 0 64px; border-radius: 8px; }
