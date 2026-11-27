@@ -415,9 +415,9 @@ export default function ServerApp() {
               <p>{date(task.plan_start)} – {date(task.plan_finish)} · {latest ? `${latest.percent_complete} % gemeldet` : 'Noch keine Fortschrittsmeldung'}</p>
               <ScheduleSignal task={task} report={latest} now={now} status={statuses.get(task.id)} />
               <p>{data.resources.filter(r => data.links.some(l => l.task_id === task.id && l.resource_id === r.id)).map(r => r.name).join(', ')}</p>
-              <details><summary>Fortschritt und Belege</summary>{canReport(role) && <Report key={task.id} task={task} resources={data.resources} links={data.links} user={session.user} owner={owner} reload={reload} />}
+              {!task.is_summary && !hasChildren && <details><summary>Fortschritt und Belege</summary>{canReport(role) && <Report key={task.id} task={task} resources={data.resources} links={data.links} user={session.user} owner={owner} reload={reload} />}
                 {reports.map(r => <div className="history" key={r.id}><strong>{r.percent_complete} %</strong> · {new Date(r.created_at).toLocaleString('de-DE')} · {data.resources.find(x => x.id === r.resource_id)?.name}<p className="comment">{r.comment}</p>{data.media.filter(m => m.progress_update_id === r.id).map(m => <Attachment key={m.id} item={m} />)}</div>)}
-              </details>
+              </details>}
             </article>
           })}
         </section>}
