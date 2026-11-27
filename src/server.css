@@ -11,6 +11,14 @@
 @media(max-width:600px) { .server-app { padding: 14px; } .task,.panel { padding: 14px; } }
 .server-app .outline-toggle { width: 100%; text-align: left; background: #edf5f2; color: #164d43; font-weight: 650; border-color: #b7d2c7; }
 
+.server-app .report input[hidden] { display: none; }
+.server-app .report fieldset { min-width: 0; }
+.report-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; margin-top: 16px; }
+.report-actions button { flex: 1 1 auto; min-width: 0; }
+.server-app .report-media-action { background: #edf5f2; border-color: #16685c; color: #164d43; }
+.server-app .report-media-action:hover:not(:disabled) { background: #dcece6; }
+@media(max-width:600px) { .report-actions button { flex: 1 1 100%; } }
+
 .dashboard-scroll { overflow-x: auto; }
 .dashboard table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .dashboard th, .dashboard td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid #d8e3de; min-width: 120px; overflow-wrap: anywhere; }

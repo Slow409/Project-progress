@@ -126,6 +126,7 @@ function Report({ task, resources, links, user, owner, reload }) {
   const camera = useRef(null)
   if (task.is_summary || !eligible.length || !task.active) return null
   async function submit(e) {
+    const details = e.currentTarget.closest('details')
     e.preventDefault(); setBusy(true); setMessage('')
     let report = saved
     try {
@@ -149,6 +150,10 @@ function Report({ task, resources, links, user, owner, reload }) {
       }
       setSaved(null); setComment(''); setMessage('Fortschritt und Belege auf dem Server gespeichert.')
       await reload()
+      if (details?.isConnected && details.open) {
+        details.open = false
+        details.querySelector('summary')?.focus()
+      }
     } catch (error) { setMessage(`${report ? 'Fortschrittsmeldung gespeichert; Belege noch nicht vollständig übertragen. Erneut versuchen. ' : ''}${error.message}`) }
     finally { setBusy(false) }
   }
@@ -168,10 +173,13 @@ function Report({ task, resources, links, user, owner, reload }) {
       <label>Kommentar<textarea value={comment} maxLength={10000} onChange={e => setComment(e.target.value)} /></label>
       <input ref={camera} hidden type="file" accept="image/*" capture="environment" onChange={pick} />
       <input ref={input} hidden type="file" accept="image/*,video/*" multiple onChange={pick} />
-      <div className="actions"><button type="button" onClick={() => camera.current.click()}>Foto aufnehmen</button><button type="button" onClick={() => input.current.click()}>Fotoarchiv / Dateien</button></div>
       {files.map((f,i) => <p key={i}>{f.name} <button type="button" onClick={() => setFiles(files.filter((_,n) => n !== i))}>Entfernen</button></p>)}
     </fieldset>
-    <button disabled={busy} type="submit">{busy ? 'Wird gespeichert …' : saved ? 'Belege erneut übertragen' : 'Fortschritt melden'}</button>
+    <div className="report-actions">
+      <button type="button" className="report-media-action" disabled={busy || Boolean(saved)} onClick={() => camera.current.click()}>Foto aufnehmen</button>
+      <button type="button" className="report-media-action" disabled={busy || Boolean(saved)} onClick={() => input.current.click()}>Fotoarchiv / Dateien</button>
+      <button disabled={busy} type="submit">{busy ? 'Wird gespeichert …' : saved ? 'Belege erneut übertragen' : 'Fortschritt melden'}</button>
+    </div>
     {message && <p role="status">{message}</p>}
   </form>
 }
