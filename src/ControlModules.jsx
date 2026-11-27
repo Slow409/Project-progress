@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
-import { latestReport, scheduleStatuses } from './scheduleStatus'
+import { metrics } from './controlMetrics.js'
 
 const DAY = 86400000
 const date = value => value ? new Date(value).toLocaleDateString('de-DE') : '–'
@@ -11,24 +11,6 @@ export const canReport = role => role === 'pm' || role === 'resource'
 const money = value => value == null ? '–' : Number(value).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 const checked = result => { if (result.error) throw result.error; return result.data || [] }
 
-export function metrics(tasks, reports, now) {
-  const leaves = tasks.filter(t => t.active !== false && !t.is_summary)
-  const states = scheduleStatuses(tasks, reports, now)
-  const rows = leaves.map(t => ({ task: t, report: latestReport(reports.filter(r => r.task_id === t.id)), status: states.get(t.id) }))
-  const current = +now
-  const actual = rows.length ? rows.reduce((sum, r) => sum + Number(r.report?.percent_complete || 0), 0) / rows.length : null
-  const planned = rows.filter(r => r.task.plan_finish && Number.isFinite(Date.parse(r.task.plan_finish)))
-  const target = planned.length ? 100 * planned.filter(r => Date.parse(r.task.plan_finish) <= current).length / planned.length : null
-  const validWeights = rows.length > 0 && rows.every(r => r.task.planned_work_hours != null && Number(r.task.planned_work_hours)>=0)
-  const sumWeight=validWeights ? rows.reduce((sum,r)=>sum+Number(r.task.planned_work_hours),0) : 0
-  const weighted=sumWeight>0 ? rows.reduce((sum,r)=>sum+Number(r.task.planned_work_hours)*Number(r.report?.percent_complete||0),0)/sumWeight : null
-  const previous = rows.length ? rows.reduce((sum,r) => sum + Number(latestReport(reports.filter(p => p.task_id === r.task.id && Date.parse(p.created_at) <= current - 7 * DAY))?.percent_complete || 0),0)/rows.length : null
-  const risk = rows.filter(r => r.status?.state === 'red' || (r.task.plan_finish && Date.parse(r.task.plan_finish) < current && Number(r.report?.percent_complete || 0) < 100))
-  const stale = rows.filter(r => r.task.plan_start && Date.parse(r.task.plan_start) <= current && Number(r.report?.percent_complete || 0) < 100 && (!r.report || current-Date.parse(r.report.created_at) >= 7*DAY))
-  const incomplete = rows.filter(r => Number(r.report?.percent_complete || 0) < 100)
-  const forecast = incomplete.length && incomplete.every(r => r.status?.forecastDate) ? incomplete.map(r=>r.status.forecastDate).sort().at(-1) : null
-  return { rows, actual, target, weighted, previous, risk, stale, forecast, done: rows.filter(r=>Number(r.report?.percent_complete)===100).length }
-}
 export function ManagementDashboard({ data, now }) {
   const m = metrics(data.tasks,data.reports,now)
   return <section className="module-panel"><h2>Management-Dashboard</h2><p>Einzelvorgänge gleich gewichtet · zusätzlich Stundenkennzahl bei vollständiger MS-Project-Aufwandsbasis.</p><div className="kpi-grid">
