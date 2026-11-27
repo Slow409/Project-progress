@@ -82,3 +82,18 @@
 .module-panel form label { min-width:0 }
 @media(max-width:600px) { .module-panel { padding:12px } .module-nav button { min-width:110px } }
 @media print { .server-app>*:not(.weekly-print) { display:none!important } .weekly-print { border:0; margin:0;padding:0 } .weekly-print .no-print { display:none } }
+
+.management-extract .kpi-grid { grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px }
+.management-extract .kpi { padding:10px }
+.management-extract .small { font-size:.85em;color:#596577 }
+@media print {
+ .management-extract { font-size:10pt }
+ .management-extract h2 { font-size:17pt }
+ .management-extract h3 { font-size:12pt;margin:10pt 0 4pt }
+ .management-extract .kpi-grid { grid-template-columns:repeat(3,1fr);gap:5pt;margin:6pt 0 10pt }
+ .management-extract .kpi { padding:5pt;gap:3pt;break-inside:avoid }
+ .management-extract .kpi strong { font-size:14pt }
+ .management-extract td,.management-extract th { padding:3pt }
+ .management-extract .dashboard-scroll { overflow:visible }
+ .management-extract ul { margin:4pt 0 }
+}
