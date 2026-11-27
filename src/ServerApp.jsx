@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { roles, canFinance, canReport, canReadAdmin, ManagementDashboard, ManagementReport, Portfolio, ScheduleHistory, Finance, RoleAdmin, ReadOnlyResources, WeeklyReport, Quality } from './ControlModules'
 import { supabase } from './lib/supabase'
 import './server.css'
 import dashboardLogo from './dashboardLogo'
@@ -27,7 +28,7 @@ function PlanImport({ project, reload }) {
       const stack = []
       const tasks = parsed.tasks.map(task => {
         while (stack.length && stack.at(-1).level >= task.outlineLevel) stack.pop()
-        const row = { uid: task.msProjectUid, name: task.text, level: task.outlineLevel, parentUid: stack.at(-1)?.uid || null, wbs: task.wbs, summary: task.isSummary, start: task.planStart ? `${task.planStart}T00:00:00` : null, finish: task.planFinish ? `${task.planFinish}T00:00:00` : null }
+        const row = { uid: task.msProjectUid, name: task.text, level: task.outlineLevel, parentUid: stack.at(-1)?.uid || null, wbs: task.wbs, summary: task.isSummary, duration: task.planDuration || null, baselineStart: task.baselineStart || null, baselineFinish: task.baselineFinish || null, workHours: task.workHours, start: task.planStart ? `${task.planStart}T00:00:00` : null, finish: task.planFinish ? `${task.planFinish}T00:00:00` : null }
         if (task.isSummary) stack.push(row)
         return row
       })
@@ -39,7 +40,7 @@ function PlanImport({ project, reload }) {
     applying.current = true
     setBusy(true); setImportFailed(false); setMessage('Plan wird übernommen …')
     try {
-      checked(await supabase.rpc('apply_project_xml_plan_with_resources', { p_project_id: project.id, p_file_name: plan.fileName, p_plan: plan.payload, p_resources: plan.resources, p_assignments: plan.assignments }))
+      checked(await supabase.rpc('apply_modular_project_plan', { p_project_id: project.id, p_file_name: plan.fileName, p_plan: plan.payload, p_resources: plan.resources, p_assignments: plan.assignments }))
       setPlan(null); setMessage('Projektplan auf dem Server aktualisiert. Bestehende Meldungen und Benutzerzuordnungen bleiben erhalten.')
       try { await reload() } catch { setMessage('Der Plan wurde gespeichert. Die Ansicht konnte noch nicht neu geladen werden. Bitte auf „Aktualisieren“ tippen.') }
     } catch (e) { setImportFailed(true); setMessage(`Plan konnte nicht übernommen werden: ${e.message || 'Bitte Verbindung und Anmeldung prüfen.'}`) } finally { applying.current = false; setBusy(false) }
@@ -251,14 +252,25 @@ export function ProgressDashboard({ data, now, statuses, project, owner }) {
 }
 
 // Fetch every permitted report, including projects with more than one API page.
-async function allProjectRows(table, projectId) {
+async function pagedRows(queryFactory) {
   const rows = []
   const size = 500
   for (let start = 0; ; start += size) {
-    const page = checked(await supabase.from(table).select('*').eq('project_id', projectId).order('created_at').order('id').range(start, start + size - 1))
+    const page = checked(await queryFactory().range(start, start+size-1))
     rows.push(...page)
-    if (page.length < size) return rows
+    if(page.length<size) return rows
   }
+}
+async function allProjectRows(table, projectId, order = 'created_at') {
+  return pagedRows(()=>supabase.from(table).select('*').eq('project_id',projectId).order(order).order('id'))
+}
+async function taskLinks(tasks) {
+  const links=[]
+  for(let i=0;i<tasks.length;i+=100){
+    const ids=tasks.slice(i,i+100).map(t=>t.id)
+    links.push(...await pagedRows(()=>supabase.from('task_resources').select('task_id,resource_id').in('task_id',ids).order('task_id').order('resource_id')))
+  }
+  return links
 }
 
 export default function ServerApp() {
@@ -272,6 +284,8 @@ export default function ServerApp() {
   const [email, setEmail] = useState('')
   const [projects, setProjects] = useState([])
   const [projectId, setProjectId] = useState('')
+  const [module, setModule] = useState('dashboard')
+  const [loadedProject, setLoadedProject] = useState('')
   const [data, setData] = useState({ tasks: [], resources: [], links: [], reports: [], media: [] })
   const [expanded, setExpanded] = useState({})
   const [error, setError] = useState('')
@@ -281,6 +295,10 @@ export default function ServerApp() {
   const currentUser = useRef(null)
   const project = projects.find(p => p.id === projectId)
   const owner = Boolean(project && project.owner_user_id === session?.user.id)
+  const role = owner ? 'pm' : project?.membershipRole || 'resource'
+  const portfolioProjects = useMemo(() => projects.filter(p => p.membershipRole === 'managing'), [projects])
+  const navigation = [['dashboard','Dashboard'],['schedule','Terminplanung'],['progress','Fortschritt'],['quality','Qualität'],['reporting','Reporting'],...(canFinance(role) ? [['finance','Controlling']] : []),...(canReadAdmin(role) ? [['management-report','Management Report'],['admin','Administration']] : []),...(portfolioProjects.length ? [['portfolio','Managing Level']] : [])]
+  const activeModule = navigation.some(([key]) => key === module) ? module : 'dashboard'
 
   useEffect(() => {
     if (!supabase) { setReady(true); return }
@@ -296,7 +314,7 @@ export default function ServerApp() {
       if (!active) return
       if (currentUser.current !== (value?.user.id || null)) {
         currentUser.current = value?.user.id || null
-        generation.current++; setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setProjects([]); setProjectId('')
+        generation.current++; setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setProjects([]); setProjectId(''); setLoadedProject(''); setModule('dashboard')
       }
       setSession(value); setReady(true)
     }
@@ -308,35 +326,44 @@ export default function ServerApp() {
   useEffect(() => {
     if (!session) return
     let active = true
-    supabase.from('projects').select('id,name,owner_user_id').order('name').then(result => {
-      if (!active) return
-      try { const rows = checked(result); setProjects(rows); setProjectId(rows[0]?.id || '') } catch (e) { setError(e.message) }
-    })
-    return () => { active = false }
+    async function loadProjects() {
+      try {
+        const [projectRows, memberRows] = await Promise.all([
+          supabase.from('projects').select('id,name,owner_user_id').order('name'),
+          supabase.from('project_memberships').select('project_id,role').eq('user_id',session.user.id)
+        ])
+        if (!active) return
+        const memberships = new Map(checked(memberRows).map(m=>[m.project_id,m.role]))
+        const rows = checked(projectRows).map(p=>({...p,membershipRole:memberships.get(p.id)}))
+        setProjects(rows);setProjectId(previous=>rows.some(p=>p.id===previous)?previous:rows[0]?.id||'')
+      } catch(e) { if(active){setProjects([]);setProjectId('');setError(e.message)} }
+    }
+    loadProjects()
+    const timer=setInterval(loadProjects,60000)
+    return () => { active = false;clearInterval(timer) }
   }, [session?.user.id])
 
   async function reload() {
     if (!projectId) return
     const current = ++generation.current
-    const results = await Promise.all([
-      supabase.from('tasks').select('*').eq('project_id', projectId).order('project_task_uid'),
-      supabase.from('resources').select('*').eq('project_id', projectId).order('project_resource_uid'),
-      supabase.from('task_resources').select('task_id,resource_id'),
-      allProjectRows('progress_updates', projectId),
-      allProjectRows('media', projectId),
-      supabase.rpc('get_task_project_areas', { p_project_id: projectId }),
+    const [tasks,resources,reports,media,areaRows] = await Promise.all([
+      allProjectRows('tasks',projectId,'project_task_uid'),
+      allProjectRows('resources',projectId,'project_resource_uid'),
+      allProjectRows('progress_updates',projectId),
+      allProjectRows('media',projectId),
+      pagedRows(()=>supabase.rpc('get_task_project_areas',{p_project_id:projectId}).order('task_id')),
     ])
     if (current !== generation.current) return
-    const [tasks, resources, links] = results.slice(0, 3).map(checked)
-    const [reports, media] = results.slice(3)
-    const areas = new Map(checked(results[5]).map(row => [row.task_id, row.project_area]))
-    setData({ tasks: tasks.map(task => ({ ...task, project_area: areas.get(task.id) })), resources, links, reports, media })
+    const links=await taskLinks(tasks)
+    if (current !== generation.current) return
+    const areas = new Map(areaRows.map(row=>[row.task_id,row.project_area]))
+    setData({tasks:tasks.map(task=>({...task,project_area:areas.get(task.id)})),resources,links,reports,media});setLoadedProject(projectId)
   }
   useEffect(() => {
-    setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setExpanded({}); if (session && projectId) setError('')
+    setData({ tasks: [], resources: [], links: [], reports: [], media: [] }); setLoadedProject(''); setExpanded({}); if (session && projectId) setError('')
     reload().catch(e => setError(e.message))
     return () => { generation.current++ }
-  }, [projectId, session?.user.id])
+  }, [projectId, session?.user.id, role])
 
   async function signIn(e) {
     e.preventDefault(); setBusy(true); setError(''); setMessage('')
@@ -354,11 +381,23 @@ export default function ServerApp() {
     {!supabase ? <p role="alert">Die Serververbindung ist noch nicht konfiguriert. Bitte die Projektverwaltung kontaktieren.</p> : !ready ? <p>Anmeldung wird geprüft …</p> : !session ? <form className="login" onSubmit={signIn}><h2>Persönlich anmelden</h2><label>E-Mail-Adresse<input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></label><button disabled={busy}>Anmeldelink senden</button><p role="status">{message}</p></form> : <>
       <p>Angemeldet als <strong>{session.user.email}</strong></p>
       {!projects.length ? <p>Deinem Konto ist noch kein freigegebenes Projekt zugeordnet. Bitte kontaktiere den Projektmanager.</p> : <>
-        <div className="project-bar"><label>Projekt<select value={projectId} onChange={e => setProjectId(e.target.value)}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button onClick={() => reload().catch(e => setError(e.message))}>Aktualisieren</button><span>{owner ? 'Projektmanager' : 'Ressource'}</span></div>
-        {owner && <details className="panel"><summary>Benutzer und Ressourcen verwalten</summary><p>Die Zuordnung gilt nur für dieses Projekt. Ressourcenbenutzer sehen ausschließlich ihre freigegebenen Aufgaben.</p><div className="resource-grid">{data.resources.map(r => <ResourceEditor key={`${projectId}:${r.id}:${r.auth_user_id}`} resource={r} project={project} reload={reload} />)}</div></details>}
-        {owner && <PlanImport key={projectId} project={project} reload={reload} />}
-        <ProgressDashboard key={projectId} data={data} now={now} statuses={statuses} project={project} owner={owner} />
-        <section><h2>{owner ? 'Projektaufgaben' : 'Meine Aufgaben'}</h2>
+        <div className="project-bar"><label>Projekt<select value={projectId} onChange={e => {setLoadedProject('');setProjectId(e.target.value);setModule('dashboard')}}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button onClick={() => reload().catch(e => setError(e.message))}>Aktualisieren</button><span>{roles[role]}</span></div>
+        <nav className="module-nav" aria-label="Anwendungsbereiche">{navigation.map(([key,label])=><button key={key} type="button" aria-pressed={activeModule===key} onClick={()=>setModule(key)}>{label}</button>)}</nav>
+        {activeModule==='portfolio' && <Portfolio projects={portfolioProjects} now={now} selectProject={(id,target='dashboard')=>{setLoadedProject(id===projectId?loadedProject:'');setProjectId(id);setModule(target)}} />}
+        {activeModule!=='portfolio' && loadedProject!==projectId && <p>Projektdaten werden geladen …</p>}
+        {activeModule!=='portfolio' && loadedProject===projectId && <>
+        {activeModule==='admin' && canReadAdmin(role) && <RoleAdmin key={projectId+role} project={project} readOnly={!owner} />}
+        {activeModule==='admin' && canReadAdmin(role) && !owner && <ReadOnlyResources data={data} />}
+        {activeModule==='admin' && owner && <details className="panel"><summary>Benutzer und Ressourcen verwalten</summary><p>Die Zuordnung gilt nur für dieses Projekt. Ressourcenbenutzer sehen ausschließlich ihre freigegebenen Aufgaben.</p><div className="resource-grid">{data.resources.map(r => <ResourceEditor key={`${projectId}:${r.id}:${r.auth_user_id}`} resource={r} project={project} reload={reload} />)}</div></details>}
+        {activeModule==='schedule' && owner && <PlanImport key={projectId} project={project} reload={reload} />}
+        {activeModule==='schedule' && <ScheduleHistory data={data} />}
+        {activeModule==='dashboard' && <ManagementDashboard data={data} now={now} />}
+        {activeModule==='management-report' && canReadAdmin(role) && <ManagementReport project={project} data={data} now={now} />}
+        {activeModule==='quality' && <Quality key={projectId} project={project} data={data} role={role} />}
+        {activeModule==='reporting' && <WeeklyReport project={project} data={data} now={now} />}
+        {activeModule==='finance' && canFinance(role) && <Finance key={projectId+role} project={project} role={role} />}
+        {activeModule==='reporting' && <ProgressDashboard key={projectId} data={data} now={now} statuses={statuses} project={project} owner={role!=='resource'} />}
+        {activeModule==='progress' && <section><h2>{role!=='resource' ? 'Projektaufgaben' : 'Meine Aufgaben'}</h2>
           {!data.tasks.length && <p>Keine zugewiesenen Aufgaben vorhanden.</p>}
           {rows.map(({ task, depth, hasChildren, open }) => {
             const reports = data.reports.filter(r => r.task_id === task.id)
@@ -368,12 +407,13 @@ export default function ServerApp() {
               <p>{date(task.plan_start)} – {date(task.plan_finish)} · {latest ? `${latest.percent_complete} % gemeldet` : 'Noch keine Fortschrittsmeldung'}</p>
               <ScheduleSignal task={task} report={latest} now={now} status={statuses.get(task.id)} />
               <p>{data.resources.filter(r => data.links.some(l => l.task_id === task.id && l.resource_id === r.id)).map(r => r.name).join(', ')}</p>
-              <details><summary>Fortschritt und Belege</summary><Report key={task.id} task={task} resources={data.resources} links={data.links} user={session.user} owner={owner} reload={reload} />
+              <details><summary>Fortschritt und Belege</summary>{canReport(role) && <Report key={task.id} task={task} resources={data.resources} links={data.links} user={session.user} owner={owner} reload={reload} />}
                 {reports.map(r => <div className="history" key={r.id}><strong>{r.percent_complete} %</strong> · {new Date(r.created_at).toLocaleString('de-DE')} · {data.resources.find(x => x.id === r.resource_id)?.name}<p className="comment">{r.comment}</p>{data.media.filter(m => m.progress_update_id === r.id).map(m => <Attachment key={m.id} item={m} />)}</div>)}
               </details>
             </article>
           })}
-        </section>
+        </section>}
+        </>}
       </>}
     </>}
   </main>
