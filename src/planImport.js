@@ -8,6 +8,12 @@ export function parseProjectXml(xml, fileName) {
   const field = (parent, name) => nodes(parent, name)[0]?.textContent?.trim() || ''
   const group = (name, item) => nodes(nodes(root, name)[0], item)
   const date = (value) => /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : ''
+  const hours = value => {
+    const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?)?$/.exec(value || '')
+    if (!m || !m.slice(1).some(Boolean)) return null
+    const total = Number(m[1]||0)*24 + Number(m[2]||0) + Number(m[3]||0)/60 + Number(m[4]||0)/3600
+    return Number.isFinite(total) && total >= 0 ? total : null
+  }
   const resources = group('Resources', 'Resource').filter((node) => field(node, 'UID') !== '0' && field(node, 'Name') && field(node, 'IsNull') !== '1').map((node) => ({ uid: field(node, 'UID'), name: field(node, 'Name') }))
   const assignments = group('Assignments', 'Assignment').map((node) => ({ taskUid: field(node, 'TaskUID'), resourceUid: field(node, 'ResourceUID'), units: field(node, 'Units'), work: field(node, 'Work') }))
   const seen = new Set()
@@ -17,7 +23,8 @@ export function parseProjectXml(xml, fileName) {
     seen.add(uid)
     const percent = Number(field(node, 'PercentComplete') || '0')
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error('Ungültiger Fortschrittswert im Projektplan.')
-    return { msProjectUid: uid, text: field(node, 'Name') || `Vorgang ${uid}`, wbs: field(node, 'WBS') || field(node, 'OutlineNumber'), outlineLevel: Number(field(node, 'OutlineLevel')) || 1,
+    const baseline = nodes(node,'Baseline').find(b=>field(b,'Number')==='0')
+    return { baselineStart: date(field(baseline,'Start')), baselineFinish: date(field(baseline,'Finish')), workHours: hours(field(node,'Work')), msProjectUid: uid, text: field(node, 'Name') || `Vorgang ${uid}`, wbs: field(node, 'WBS') || field(node, 'OutlineNumber'), outlineLevel: Number(field(node, 'OutlineLevel')) || 1,
       isSummary: field(node, 'Summary') === '1', isMilestone: field(node, 'Milestone') === '1', planStart: date(field(node, 'Start')), planFinish: date(field(node, 'Finish')), planDuration: field(node, 'Duration'),
       dueDate: date(field(node, 'Finish')), importedProgress: percent, resourceNames: resources.filter((resource) => assignments.some((assignment) => assignment.taskUid === uid && assignment.resourceUid === resource.uid)).map((resource) => resource.name),
       predecessorUids: nodes(node, 'PredecessorLink').map((link) => field(link, 'PredecessorUID')) }
